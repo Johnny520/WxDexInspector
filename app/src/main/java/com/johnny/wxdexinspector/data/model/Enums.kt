@@ -17,9 +17,9 @@ enum class NavStyle(val label: String) {
 /** 权限运行模式设置 */
 enum class WorkMode(val label: String) {
     AUTO("自动检测模式（推荐）"),
-    STATIC("强制使用纯静态模式"),
-    SHIZUKU("强制Shizuku增强模式"),
-    ROOT("强制Root模式")
+    STATIC("纯静态模式"),
+    SHIZUKU("Shizuku 增强模式"),
+    ROOT("Root 模式")
 }
 
 /** 权限三层：静态 / Shizuku / Root */

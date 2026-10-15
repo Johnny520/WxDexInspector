@@ -155,7 +155,7 @@ fun SettingsScreen(
                                 else context.toast("未检测到 su，当前设备可能未 Root")
                             }
                             WorkMode.SHIZUKU -> {
-                                if (PermissionManager.isShizukuInstalled()) {
+                                if (PermissionManager.isShizukuInstalled(context)) {
                                     PermissionManager.requestShizukuPermission { ok ->
                                         context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败或被拒绝")
                                         refreshKey++
@@ -203,7 +203,7 @@ fun SettingsScreen(
                 "Shizuku 权限",
                 subtitle = when (shizukuState) {
                     PermState.GRANTED -> "${shizukuState.label()}（点击可重新检测）"
-                    PermState.UNAVAILABLE -> "未安装或未运行 Shizuku"
+                    PermState.UNAVAILABLE -> PermissionManager.shizukuStatusText(context)
                     else -> "点击申请 Shizuku 授权"
                 },
                 icon = Icons.Filled.GppGood,

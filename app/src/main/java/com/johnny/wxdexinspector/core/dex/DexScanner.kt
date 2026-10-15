@@ -43,7 +43,18 @@ class DexScanner(
         var truncated = false
         var dexNum = 0
 
-        val bridge = DexKitBridge.create(apkPath)
+        if (!DexKitNative.ensureLoaded()) {
+            throw IllegalStateException(
+                "DexKit 原生库加载失败：${DexKitNative.statusText}\n" +
+                    "建议：① 卸载后重新安装本应用；② 确认设备架构为 arm64-v8a / armeabi-v7a；" +
+                    "③ 若仍失败，请在「关于 → 问题反馈」中附上运行日志。"
+            )
+        }
+        val bridge = try {
+            DexKitBridge.create(apkPath)
+        } catch (t: Throwable) {
+            throw IllegalStateException("无法初始化 DexKit：${t.message}", t)
+        }
         try {
             dexNum = runCatching { bridge.getDexNum() }.getOrDefault(0)
             log("DexKit 加载完成，DEX 数量：$dexNum")

@@ -17,8 +17,8 @@ android {
         applicationId = "com.johnny.wxdexinspector"
         minSdk = 29
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -77,6 +77,12 @@ android {
             excludes += "/META-INF/DEPENDENCIES"
             excludes += "/META-INF/LICENSE*"
             excludes += "/META-INF/NOTICE*"
+        }
+        // 强制把 .so 解压安装（useLegacyPackaging=true）。
+        // 个别 ROM / 第三方安装器无法直接 mmap APK 内未压缩的原生库，
+        // 会导致 DexKit 报 "No implementation found ... nativeInitDexKit"。
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 

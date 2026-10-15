@@ -128,10 +128,29 @@ object PermissionManager {
     }
 
     // ---------- Shizuku ----------
-    fun isShizukuInstalled(): Boolean = try {
-        !Shizuku.isPreV11() && Shizuku.getVersion() > 0
+    private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
+
+    enum class ShizukuStatus(val label: String) {
+        NOT_INSTALLED("未安装"),
+        NOT_RUNNING("已安装，服务未运行"),
+        NOT_AUTHORIZED("已运行，未授权"),
+        AUTHORIZED("已授权")
+    }
+
+    /**
+     * 是否安装 Shizuku。
+     * 旧实现依赖 Shizuku.getVersion()，而该方法只有 binder 连通时才有值，
+     * 会导致「已安装但服务未启动」被误判为「未安装」。改为优先查包名。
+     */
+    fun isShizukuInstalled(context: Context): Boolean = try {
+        context.packageManager.getPackageInfo(SHIZUKU_PACKAGE, 0)
+        true
     } catch (t: Throwable) {
-        false
+        try {
+            Shizuku.pingBinder() || Shizuku.getVersion() > 0
+        } catch (t2: Throwable) {
+            false
+        }
     }
 
     fun isShizukuRunning(): Boolean = try {
@@ -146,9 +165,25 @@ object PermissionManager {
         false
     }
 
+    fun shizukuStatus(context: Context): ShizukuStatus = when {
+        !isShizukuInstalled(context) -> ShizukuStatus.NOT_INSTALLED
+        !isShizukuRunning() -> ShizukuStatus.NOT_RUNNING
+        isShizukuAuthorized() -> ShizukuStatus.AUTHORIZED
+        else -> ShizukuStatus.NOT_AUTHORIZED
+    }
+
+    /** 给界面用的 Shizuku 状态文案（区分未安装/未运行/未授权/已授权） */
+    fun shizukuStatusText(context: Context): String = when (shizukuStatus(context)) {
+        ShizukuStatus.NOT_INSTALLED -> "未安装 Shizuku（请先安装官方 Shizuku 应用）"
+        ShizukuStatus.NOT_RUNNING -> "已安装但服务未运行（请打开 Shizuku 启动服务）"
+        ShizukuStatus.NOT_AUTHORIZED -> "服务运行中，等待授权（点击申请）"
+        ShizukuStatus.AUTHORIZED -> "已授权"
+    }
+
     fun requestShizukuPermission(onResult: (Boolean) -> Unit) {
         try {
-            if (Shizuku.isPreV11() || Shizuku.getVersion() < 11) {
+            if (!isShizukuRunning()) {
+                WxLogger.w(TAG, "Shizuku 服务未运行，无法申请授权")
                 onResult(false); return
             }
             if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
@@ -192,10 +227,10 @@ object PermissionManager {
             isRootAvailable() -> PermState.DENIED
             else -> PermState.UNAVAILABLE
         }
-        val shizuku = when {
-            !isShizukuInstalled() -> PermState.UNAVAILABLE
-            isShizukuAuthorized() -> PermState.GRANTED
-            else -> PermState.DENIED
+        val shizuku = when (shizukuStatus(context)) {
+            ShizukuStatus.NOT_INSTALLED, ShizukuStatus.NOT_RUNNING -> PermState.UNAVAILABLE
+            ShizukuStatus.NOT_AUTHORIZED -> PermState.DENIED
+            ShizukuStatus.AUTHORIZED -> PermState.GRANTED
         }
         val storage = if (isStorageGranted(context)) PermState.GRANTED else PermState.DENIED
         return Snapshot(root, shizuku, storage, resolveMode(root, shizuku))
@@ -255,7 +290,7 @@ object PermissionManager {
             PermItem("查询已安装应用", "列出手机内已安装 APK（普通权限，安装即授予）", PermState.GRANTED, true),
             PermItem("网络访问", "检查更新 / 在线插件市场", PermState.GRANTED, true),
             PermItem("Root 权限", "免复制、直读任意目录下的 APK", snap.root, false),
-            PermItem("Shizuku 权限", "免 Root 提权，提取已安装 APK", snap.shizuku, false)
+            PermItem("Shizuku 权限", shizukuStatusText(context), snap.shizuku, false)
         )
     }
 }

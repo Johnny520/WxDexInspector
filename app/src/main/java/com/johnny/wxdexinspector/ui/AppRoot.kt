@@ -114,7 +114,7 @@ fun AppRoot() {
                     }
                 }
                 WorkMode.SHIZUKU -> {
-                    if (PermissionManager.isShizukuInstalled()) {
+                    if (PermissionManager.isShizukuInstalled(context)) {
                         PermissionManager.requestShizukuPermission { ok ->
                             context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败或被拒绝")
                         }
