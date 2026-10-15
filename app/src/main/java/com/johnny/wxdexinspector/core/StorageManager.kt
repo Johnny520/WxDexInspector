@@ -64,6 +64,8 @@ object StorageManager {
     fun logsDir(context: Context? = null): File = sub("logs", context)
     fun tempDir(context: Context? = null): File = sub("temp", context)
 
+    fun pluginsDir(context: Context? = null): File = sub("plugins", context)
+
     private fun sub(name: String, context: Context?): File {
         val f = File(rootDir(context), name)
         if (!f.exists()) f.mkdirs()
@@ -73,6 +75,7 @@ object StorageManager {
     /** 确保所有子目录存在 */
     fun ensureDirs(context: Context? = null): Boolean = runCatching {
         apksDir(context); snapshotsDir(context); exportsDir(context); logsDir(context); tempDir(context)
+        pluginsDir(context)
         true
     }.getOrDefault(false)
 

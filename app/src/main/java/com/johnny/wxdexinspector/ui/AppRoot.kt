@@ -46,6 +46,7 @@ import com.johnny.wxdexinspector.ui.screens.ExtractScreen
 import com.johnny.wxdexinspector.ui.screens.HistoryScreen
 import com.johnny.wxdexinspector.ui.screens.HomeScreen
 import com.johnny.wxdexinspector.ui.screens.LogScreen
+import com.johnny.wxdexinspector.ui.screens.PluginStoreScreen
 import com.johnny.wxdexinspector.ui.screens.ScanScreen
 import com.johnny.wxdexinspector.ui.screens.SettingsScreen
 import com.johnny.wxdexinspector.ui.screens.SnapshotDetailScreen
@@ -64,6 +65,7 @@ sealed interface Route {
     data class Diff(val initial: String?) : Route
     data object Batch : Route
     data object Logs : Route
+    data object PluginStore : Route
 }
 
 @Composable
@@ -176,7 +178,8 @@ fun AppRoot() {
                             onNavStyle = { navStyle = it; AppPrefs.navStyle = it },
                             glassAlpha = glassAlpha,
                             onGlassAlpha = { glassAlpha = it; AppPrefs.glassAlpha = it },
-                            onOpenStatus = { statusDialog = true }
+                            onOpenStatus = { statusDialog = true },
+                            onOpenPluginStore = { routeStack.add(Route.PluginStore) }
                         )
                         else -> AboutScreen()
                     }
@@ -229,6 +232,7 @@ fun AppRoot() {
                             onBack = { routeStack.removeAt(routeStack.lastIndex) }
                         )
                         is Route.Logs -> LogScreen(onBack = { routeStack.removeAt(routeStack.lastIndex) })
+                        is Route.PluginStore -> PluginStoreScreen(onBack = { routeStack.removeAt(routeStack.lastIndex) })
                     }
                 }
             }

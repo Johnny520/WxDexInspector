@@ -127,7 +127,7 @@ class DexScanner(
                                 }
                             }
                             if (hookCandidates.size < limits.maxHookCandidates) {
-                                HookFeatureLibrary.FEATURES.forEach { f ->
+                                HookFeatureLibrary.allFeatures.forEach { f ->
                                     if (matches(f, lowerSet) && hookCandidates.size < limits.maxHookCandidates) {
                                         hookCandidates.add(
                                             HookCandidate(

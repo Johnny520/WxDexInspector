@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GppGood
@@ -78,7 +79,8 @@ fun SettingsScreen(
     onNavStyle: (NavStyle) -> Unit,
     glassAlpha: Float,
     onGlassAlpha: (Float) -> Unit,
-    onOpenStatus: () -> Unit
+    onOpenStatus: () -> Unit,
+    onOpenPluginStore: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -303,6 +305,15 @@ fun SettingsScreen(
                 }
             })
             SwitchRow("独立备份日志文件", backupLog, { backupLog = it; AppPrefs.backupLog = it })
+        }
+
+        SectionCard(title = "插件与扩展") {
+            ActionRow("打开插件商店", Icons.Filled.Extension, onClick = { onOpenPluginStore() })
+            SettingRow(
+                "插件说明",
+                "在线安装加固 / SDK / Hook 特征包，扩展识别能力（不含破解类内容）",
+                icon = Icons.Filled.Extension
+            )
         }
 
         SectionCard(title = "关于与更新") {

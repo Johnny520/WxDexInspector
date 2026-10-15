@@ -1,5 +1,7 @@
 package com.johnny.wxdexinspector.core.ext
 
+import com.johnny.wxdexinspector.core.plugin.PluginRegistry
+
 /** Intent-Filter 信息 */
 data class IntentFilterInfo(
     val componentType: String,
@@ -167,7 +169,7 @@ object ExtensionAnalyzer {
         val entriesLower = fileEntries.map { it.lowercase() }
         val classesJoined = classNames.take(200000).joinToString("\u0000")
         val found = ArrayList<String>()
-        HARDENING_SIGNATURES.forEach { (vendor, sigs) ->
+        (HARDENING_SIGNATURES + PluginRegistry.extraHardening()).forEach { (vendor, sigs) ->
             val hit = sigs.any { s ->
                 val sl = s.lowercase()
                 entriesLower.any { it.contains(sl) } || classesJoined.contains(s, ignoreCase = true)
@@ -179,7 +181,7 @@ object ExtensionAnalyzer {
 
     fun detectSdks(classNames: List<String>): List<String> {
         val found = ArrayList<String>()
-        SDK_SIGNATURES.forEach { (name, prefixes) ->
+        (SDK_SIGNATURES + PluginRegistry.extraSdk()).forEach { (name, prefixes) ->
             val hit = classNames.any { cn -> prefixes.any { cn.startsWith(it) } }
             if (hit) found.add(name)
         }

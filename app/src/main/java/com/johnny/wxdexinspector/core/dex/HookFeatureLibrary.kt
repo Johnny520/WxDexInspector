@@ -1,5 +1,7 @@
 package com.johnny.wxdexinspector.core.dex
 
+import com.johnny.wxdexinspector.core.plugin.PluginRegistry
+
 /**
  * 内置微信模块特征库。
  * 每条特征包含若干「字符串常量」判据，命中即视为 Hook 候选方法。
@@ -87,14 +89,31 @@ object HookFeatureLibrary {
         )
     )
 
-    /** string -> 关联特征 */
-    val stringIndex: Map<String, List<HookFeature>> by lazy {
+    /** 内置特征 + 插件扩展特征 */
+    val allFeatures: List<HookFeature>
+        get() = FEATURES + PluginRegistry.extraHookFeatures()
+
+    @Volatile
+    private var indexCache: Map<String, List<HookFeature>>? = null
+
+    /** string -> 关联特征（插件变更后可通过 invalidate() 重建） */
+    val stringIndex: Map<String, List<HookFeature>>
+        get() = indexCache ?: synchronized(this) {
+            indexCache ?: buildIndex().also { indexCache = it }
+        }
+
+    /** 插件安装/启停后调用，使特征索引失效重建 */
+    fun invalidate() {
+        synchronized(this) { indexCache = null }
+    }
+
+    private fun buildIndex(): Map<String, List<HookFeature>> {
         val map = HashMap<String, MutableList<HookFeature>>()
-        FEATURES.forEach { f ->
+        allFeatures.forEach { f ->
             (f.allStrings + f.anyStrings).forEach { s ->
                 map.getOrPut(s.lowercase()) { mutableListOf() }.add(f)
             }
         }
-        map
+        return map
     }
 }

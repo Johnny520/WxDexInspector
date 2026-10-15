@@ -3,6 +3,7 @@ package com.johnny.wxdexinspector
 import android.app.Application
 import com.johnny.wxdexinspector.core.StorageManager
 import com.johnny.wxdexinspector.core.log.WxLogger
+import com.johnny.wxdexinspector.core.plugin.PluginRegistry
 import com.johnny.wxdexinspector.data.AppPrefs
 
 /**
@@ -16,6 +17,7 @@ class WxApp : Application() {
         AppPrefs.init(this)
         WxLogger.init(this)
         StorageManager.ensureDirs(this)
+        PluginRegistry.ensureLoaded(this)
         WxLogger.i(TAG, "WxDexInspector 启动完成，版本 ${BuildConfig.VERSION_NAME}")
     }
 
