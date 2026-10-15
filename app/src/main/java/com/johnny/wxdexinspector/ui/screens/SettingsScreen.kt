@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GppGood
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -94,6 +95,16 @@ fun SettingsScreen(
     var pathInput by remember { mutableStateOf(AppPrefs.storageRoot) }
     var storagePath by remember { mutableStateOf(StorageManager.rootPath(context)) }
 
+    // 主动申请 Root 授权（会触发授权管理器弹窗，需在子线程等待用户点击）
+    val requestRootPermission: () -> Unit = {
+        scope.launch {
+            context.toast("正在申请 Root 权限，请在弹出的授权窗口中点击「允许」…")
+            val ok = withContext(Dispatchers.IO) { PermissionManager.requestRoot() }
+            context.toast(if (ok) "✅ 已获得 Root 权限" else "未获得 Root 权限（可能被拒绝或设备未 Root）")
+            refreshKey++
+        }
+    }
+
     LaunchedEffect(refreshKey) {
         val snap = withContext(Dispatchers.IO) { PermissionManager.snapshot(context, doRootProbe = true) }
         rootState = snap.root
@@ -120,23 +131,69 @@ fun SettingsScreen(
                 )
             }
             ActionRow("重新检测权限", Icons.Filled.GppGood, onClick = { refreshKey++ })
-            ActionRow("重新申请授权", Icons.Filled.Lock, onClick = {
+            ActionRow("一键申请/修复权限", Icons.Filled.Lock, onClick = {
                 when {
-                    shizukuState == PermState.DENIED || shizukuState == PermState.UNAVAILABLE ->
+                    rootState != PermState.GRANTED && PermissionManager.isRootAvailable() -> requestRootPermission()
+                    shizukuState != PermState.GRANTED && shizukuState != PermState.UNAVAILABLE ->
                         PermissionManager.requestShizukuPermission { ok ->
-                            context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败")
+                            context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败或被拒绝")
                             refreshKey++
                         }
                     storageState != PermState.GRANTED -> requestAllFiles(context)
-                    else -> context.toast("权限已就绪")
+                    else -> { context.toast("权限已就绪"); refreshKey++ }
                 }
             })
         }
 
-        SectionCard(title = "权限状态") {
-            SettingRow("Root", rootState.label(), icon = Icons.Filled.Lock, onClick = { refreshKey++ })
-            SettingRow("Shizuku", shizukuState.label(), icon = Icons.Filled.GppGood, onClick = { refreshKey++ })
-            SettingRow("文件存储权限", storageState.label(), icon = Icons.Filled.Storage, onClick = { refreshKey++ })
+        SectionCard(title = "权限状态（点击条目即可申请）") {
+            SettingRow(
+                "Root 权限",
+                subtitle = when (rootState) {
+                    PermState.GRANTED -> "${rootState.label()}（点击可重新检测）"
+                    PermState.UNAVAILABLE -> "设备未检测到 su，无法申请"
+                    else -> "点击申请 Root 授权（会弹出授权窗口）"
+                },
+                icon = Icons.Filled.Lock,
+                onClick = {
+                    if (PermissionManager.isRootAvailable()) requestRootPermission()
+                    else context.toast("未检测到 su，当前设备可能未 Root")
+                }
+            )
+            SettingRow(
+                "Shizuku 权限",
+                subtitle = when (shizukuState) {
+                    PermState.GRANTED -> "${shizukuState.label()}（点击可重新检测）"
+                    PermState.UNAVAILABLE -> "未安装或未运行 Shizuku"
+                    else -> "点击申请 Shizuku 授权"
+                },
+                icon = Icons.Filled.GppGood,
+                onClick = {
+                    if (shizukuState == PermState.UNAVAILABLE) {
+                        context.toast("未检测到 Shizuku，请先安装并启动 Shizuku 应用")
+                    } else {
+                        PermissionManager.requestShizukuPermission { ok ->
+                            context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败或被拒绝")
+                            refreshKey++
+                        }
+                    }
+                }
+            )
+            SettingRow(
+                "文件存储权限",
+                subtitle = if (storageState == PermState.GRANTED) "${storageState.label()}（点击查看）"
+                else "点击前往系统设置授予「所有文件访问」权限",
+                icon = Icons.Filled.Storage,
+                onClick = {
+                    if (storageState == PermState.GRANTED) context.toast("存储权限已就绪")
+                    else PermissionManager.openAllFilesSettings(context)
+                }
+            )
+            SettingRow(
+                "通知权限",
+                subtitle = "扫描完成等提示需要通知权限（Android 13+）",
+                icon = Icons.Filled.Notifications,
+                onClick = { context.toast("如未授权，可在系统「应用信息 → 通知」中开启") }
+            )
         }
 
         SectionCard(title = "导航栏设置") {
@@ -213,7 +270,7 @@ fun SettingsScreen(
             ActionRow("查看开源协议", Icons.Filled.GppGood) { showLicense = true }
         }
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(108.dp))
     }
 
     if (showDisclaimer) InfoDialog("免责声明 & 使用须知", DISCLAIMER_TEXT) { showDisclaimer = false }

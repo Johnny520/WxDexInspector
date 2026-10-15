@@ -18,11 +18,14 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.johnny.wxdexinspector.core.permission.PermissionManager
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.johnny.wxdexinspector.core.util.findActivity
 import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.data.model.NavStyle
@@ -92,19 +95,16 @@ fun AppRoot() {
         }
 
         val current = routeStack.lastOrNull()
+        val backdrop = rememberLayerBackdrop()
         if (current == null) {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
-                bottomBar = {
-                    WxBottomBar(
-                        style = navStyle,
-                        alpha = glassAlpha,
-                        current = tab,
-                        onSelect = { tab = it }
-                    )
-                }
+                bottomBar = { }
             ) { padding ->
-                Box(Modifier.fillMaxSize().padding(padding)) {
+                Box(Modifier.fillMaxSize()) {
+                    // 内容层：作为液态玻璃的采样背景（允许内容滑到导航栏下方）
+                    Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+                        Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
                     when (tab) {
                         0 -> HomeScreen(
                             modeLabel = permText.lineSequence().firstOrNull()?.removePrefix("当前工作模式：") ?: "自动检测",
@@ -137,6 +137,18 @@ fun AppRoot() {
                         )
                         else -> AboutScreen()
                     }
+                        }
+                    }
+                    WxBottomBar(
+                        style = navStyle,
+                        alpha = glassAlpha,
+                        current = tab,
+                        onSelect = { tab = it },
+                        backdrop = backdrop,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = padding.calculateBottomPadding())
+                    )
                 }
             }
         } else {

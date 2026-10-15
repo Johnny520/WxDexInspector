@@ -54,8 +54,9 @@ object BinaryRes {
                 val end = minOf(o + len2, d.size)
                 String(d, o, end - o, Charsets.UTF_8)
             } else {
-                var len = u8(d, o); o++
-                if (len and 0x80 != 0) { len = ((len and 0x7F) shl 8) or u8(d, o); o++ }
+                // UTF-16 字符串：长度是 2 字节（length16），高位为 1 时再取一次 2 字节扩展
+                var len = u16(d, o); o += 2
+                if (len and 0x8000 != 0) { len = ((len and 0x7FFF) shl 16) or u16(d, o); o += 2 }
                 val bytes = minOf(len * 2, d.size - o)
                 String(d, o, bytes, Charsets.UTF_16LE)
             }
@@ -84,7 +85,9 @@ object BinaryRes {
                     val attrCount = u16(data, pos + 28)
                     val name = strings.getOrElse(nameIdx) { "" }
                     val attrs = LinkedHashMap<String, String>()
-                    val attrBase = pos + 8 + attrStart
+                    // 属性数组起点 = 本 chunk 起点 + headerSize(16) + attributeStart
+                    val headerSize = u16(data, pos + 2)
+                    val attrBase = pos + headerSize + attrStart
                     val size = if (attrSize <= 0) 20 else attrSize
                     for (i in 0 until attrCount) {
                         val a = attrBase + i * size

@@ -35,6 +35,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.johnny.wxdexinspector.data.model.NavStyle
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
 
 private data class NavItem(val label: String, val icon: ImageVector)
 
@@ -47,7 +51,9 @@ private val NAV_ITEMS = listOf(
 
 /**
  * 底部导航栏：支持原生标准导航 / 液态玻璃悬浮导航两种风格。
- * @param alpha 液态玻璃透明度 0.2~0.9，实时生效
+ * 液态玻璃基于开源库 backdrop（Kyant0/AndroidLiquidGlass）实现真实背景采样（模糊 + 折射 + 高光）。
+ * @param alpha 液态玻璃不透明度 0.2~0.9，实时生效
+ * @param backdrop 由上层 rememberLayerBackdrop() 提供的内容层，用于玻璃采样
  */
 @Composable
 fun WxBottomBar(
@@ -55,11 +61,12 @@ fun WxBottomBar(
     alpha: Float,
     current: Int,
     onSelect: (Int) -> Unit,
+    backdrop: LayerBackdrop? = null,
     modifier: Modifier = Modifier
 ) {
     when (style) {
         NavStyle.NATIVE -> NativeBar(current, onSelect, modifier)
-        NavStyle.GLASS -> GlassBar(alpha, current, onSelect, modifier)
+        NavStyle.GLASS -> GlassBar(alpha, current, onSelect, backdrop, modifier)
     }
 }
 
@@ -82,9 +89,36 @@ private fun NativeBar(current: Int, onSelect: (Int) -> Unit, modifier: Modifier)
 }
 
 @Composable
-private fun GlassBar(alpha: Float, current: Int, onSelect: (Int) -> Unit, modifier: Modifier) {
+private fun GlassBar(
+    alpha: Float,
+    current: Int,
+    onSelect: (Int) -> Unit,
+    backdrop: LayerBackdrop?,
+    modifier: Modifier
+) {
     val shape = RoundedCornerShape(28.dp)
     val scheme = MaterialTheme.colorScheme
+    val surface = scheme.surface.copy(alpha = alpha.coerceIn(0.2f, 0.9f))
+
+    // 液态玻璃：采样下层内容做模糊 + 边缘折射；低版本由库内部自动降级（无模糊）
+    val glassModifier = if (backdrop != null) {
+        Modifier.drawBackdrop(
+            backdrop = backdrop,
+            shape = { shape },
+            effects = {
+                blur(16.dp.toPx())
+                lens(24.dp.toPx(), 48.dp.toPx())
+            },
+            onDrawSurface = { drawRect(surface) }
+        )
+    } else {
+        Modifier
+            .shadow(14.dp, shape, clip = false)
+            .clip(shape)
+            .background(surface)
+            .border(1.dp, scheme.outlineVariant.copy(alpha = 0.55f), shape)
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -93,10 +127,7 @@ private fun GlassBar(alpha: Float, current: Int, onSelect: (Int) -> Unit, modifi
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(14.dp, shape, clip = false)
-                .clip(shape)
-                .background(scheme.surface.copy(alpha = alpha.coerceIn(0.2f, 0.9f)))
-                .border(1.dp, scheme.outlineVariant.copy(alpha = 0.55f), shape)
+                .then(glassModifier)
                 .padding(vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
@@ -139,7 +170,7 @@ private fun GlassItem(item: NavItem, selected: Boolean, onClick: () -> Unit, mod
                 .width(18.dp)
                 .height(3.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(if (selected) scheme.primary else scheme.surface.copy(alpha = 0f))
+                .background(if (selected) scheme.primary else androidx.compose.ui.graphics.Color.Transparent)
         )
     }
 }

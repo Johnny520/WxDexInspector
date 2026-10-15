@@ -1,9 +1,12 @@
 package com.johnny.wxdexinspector.core.permission
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import com.johnny.wxdexinspector.core.log.WxLogger
 import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.data.model.PermState
@@ -55,6 +58,71 @@ object PermissionManager {
         out.contains("uid=0")
     } catch (t: Throwable) {
         false
+    }
+
+    /**
+     * 主动申请 Root 授权：执行 `su -c id`。
+     * 首次调用会触发授权管理器（Magisk / KernelSU / SuperSU）的授权弹窗，等待用户点击。
+     * 必须在子线程调用（会阻塞等待用户操作）。
+     * @param timeoutMs 等待用户授权的超时时间
+     * @return true 表示已获得 uid=0（授权成功）
+     */
+    fun requestRoot(timeoutMs: Long = 120_000L): Boolean {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val finished = process.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (!finished) {
+                WxLogger.w(TAG, "Root 授权等待超时（${timeoutMs / 1000}s），已终止本次请求")
+                process.destroy()
+                return false
+            }
+            val out = process.inputStream.bufferedReader().readText()
+            runCatching { process.errorStream.close() }
+            WxLogger.i(TAG, "su -c id 返回: ${out.trim()}")
+            out.contains("uid=0")
+        } catch (t: Throwable) {
+            WxLogger.e(TAG, "申请 Root 权限失败", t)
+            false
+        } finally {
+            runCatching { process?.destroy() }
+        }
+    }
+
+    /** 按系统版本裁剪出需要动态申请的运行时权限 */
+    fun runtimePermissions(): Array<String> {
+        val list = ArrayList<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            list.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+            list.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        return list.toTypedArray()
+    }
+
+    /** 跳转系统「所有文件访问权限」设置页（Android 11+） */
+    fun openAllFilesSettings(context: Context) {
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                    .setData(Uri.parse("package:${context.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure { t ->
+            WxLogger.e(TAG, "打开应用级所有文件访问页失败，尝试通用页", t)
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }.onFailure { t2 ->
+                WxLogger.e(TAG, "打开所有文件访问设置页失败", t2)
+            }
+        }
     }
 
     // ---------- Shizuku ----------

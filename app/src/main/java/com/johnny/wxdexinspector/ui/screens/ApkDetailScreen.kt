@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +33,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.johnny.wxdexinspector.core.apk.ApkInfoReader
@@ -52,6 +55,7 @@ import com.johnny.wxdexinspector.core.apk.ApkMeta
 import com.johnny.wxdexinspector.core.ext.BinaryRes
 import com.johnny.wxdexinspector.core.ext.ExtensionAnalyzer
 import com.johnny.wxdexinspector.core.ext.ExtensionResult
+import com.johnny.wxdexinspector.core.util.copyToClipboard
 import com.johnny.wxdexinspector.core.util.toast
 import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.ui.components.SectionCard
@@ -87,9 +91,11 @@ fun ApkDetailScreen(
         val r = withContext(Dispatchers.IO) {
             val m = ApkInfoReader.read(context, apkPath, source)
             val entries = BinaryRes.listZipEntries(apkPath)
-            val e = if (AppPrefs.extActive) {
-                ExtensionAnalyzer.analyze(apkPath, emptyList(), entries, parseArsc = false, previewFiles = true, onLog = {})
-            } else null
+            // 组件/权限解析是核心能力，始终执行；SDK/资源等重解析由「拓展功能」开关控制
+            val e = ExtensionAnalyzer.analyze(
+                apkPath, emptyList(), entries,
+                parseArsc = false, previewFiles = AppPrefs.extPreview, onLog = {}
+            )
             Triple(m, e, entries)
         }
         meta = r.first
@@ -111,7 +117,12 @@ fun ApkDetailScreen(
             IconButton(onClick = { onScan(apkPath, source) }) { Icon(Icons.Filled.PlayArrow, contentDescription = "扫描") }
         }
 
-        val tabs = if (AppPrefs.extActive) listOf("概览", "组件", "SDK&加固", "证书", "资源", "文件") else listOf("概览", "证书")
+        val tabs = ArrayList<String>().apply {
+            add("概览"); add("组件"); add("证书")
+            if (AppPrefs.extActive) add("SDK&加固")
+            add("文件")
+            if (AppPrefs.extActive) add("资源")
+        }
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
             tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
         }
@@ -123,7 +134,7 @@ fun ApkDetailScreen(
 
         val m = meta ?: return@Column
         when (tabs.getOrNull(tab)) {
-            "概览" -> OverviewTab(m)
+            "概览" -> OverviewTab(m, context)
             "组件" -> ComponentsTab(ext)
             "SDK&加固" -> SdkTab(
                 hardening = hardening,
@@ -177,7 +188,7 @@ fun ApkDetailScreen(
 }
 
 @Composable
-private fun OverviewTab(m: ApkMeta) {
+private fun OverviewTab(m: ApkMeta, context: Context) {
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             SectionCard(title = "基础信息") {
@@ -189,6 +200,23 @@ private fun OverviewTab(m: ApkMeta) {
                     InfoLine("文件大小", "${m.sizeBytes / 1024 / 1024} MB")
                     InfoLine("来源", m.source)
                     InfoLine("文件路径", m.filePath)
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = {
+                        val text = buildString {
+                            appendLine("应用名称: ${m.appLabel}")
+                            appendLine("包名: ${m.packageName}")
+                            appendLine("版本: ${m.versionName} (${m.versionCode})")
+                            appendLine("minSdk/targetSdk: ${m.minSdk}/${m.targetSdk}")
+                            appendLine("大小: ${m.sizeBytes} bytes")
+                            appendLine("来源: ${m.source}")
+                            appendLine("路径: ${m.filePath}")
+                            appendLine("MD5: ${m.md5}")
+                            appendLine("SHA1: ${m.sha1}")
+                            appendLine("SHA256: ${m.sha256}")
+                        }
+                        context.copyToClipboard(text, "APK概览")
+                        context.toast("已复制概览信息")
+                    }) { Text("复制全部信息") }
                 }
             }
         }
@@ -197,33 +225,130 @@ private fun OverviewTab(m: ApkMeta) {
 
 @Composable
 private fun ComponentsTab(ext: ExtensionResult?) {
+    val context = LocalContext.current
     if (ext == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("未启用拓展功能或解析失败") }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("解析失败：未获取到组件信息", textAlign = TextAlign.Center)
+        }
         return
     }
+    val componentTotal = ext.activities.size + ext.services.size + ext.receivers.size + ext.providers.size
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            SectionCard(title = "权限 (${ext.permissions.size})") {
-                ListBlock(ext.permissions)
+            SectionCard(title = "组件统计") {
+                Column(Modifier.padding(16.dp)) {
+                    InfoLine("四大组件总数", componentTotal.toString())
+                    InfoLine("Activity", ext.activities.size.toString())
+                    InfoLine("Service", ext.services.size.toString())
+                    InfoLine("Receiver", ext.receivers.size.toString())
+                    InfoLine("Provider", ext.providers.size.toString())
+                    InfoLine("使用权限", "${ext.permissions.size} 项")
+                    InfoLine("自定义权限", "${ext.declaredPermissions.size} 项")
+                    InfoLine("Intent-Filter", "${ext.intentFilters.size} 项")
+                }
             }
         }
-        item { SectionCard(title = "Activity (${ext.activities.size})") { ListBlock(ext.activities) } }
-        item { SectionCard(title = "Service (${ext.services.size})") { ListBlock(ext.services) } }
-        item { SectionCard(title = "Receiver (${ext.receivers.size})") { ListBlock(ext.receivers) } }
-        item { SectionCard(title = "Provider (${ext.providers.size})") { ListBlock(ext.providers) } }
+        item { ComponentListCard("使用权限", ext.permissions, context) }
+        if (ext.declaredPermissions.isNotEmpty()) {
+            item { ComponentListCard("自定义权限", ext.declaredPermissions, context) }
+        }
+        item { ComponentListCard("Activity", ext.activities, context) }
+        item { ComponentListCard("Service", ext.services, context) }
+        item { ComponentListCard("Receiver", ext.receivers, context) }
+        item { ComponentListCard("Provider", ext.providers, context) }
         if (ext.intentFilters.isNotEmpty()) {
             item {
                 SectionCard(title = "Intent-Filter (${ext.intentFilters.size})") {
                     Column(Modifier.padding(14.dp)) {
-                        ext.intentFilters.take(100).forEach { f ->
-                            Text("[${f.componentType}] ${f.componentName}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                            if (f.actions.isNotEmpty()) Text("  action: ${f.actions.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (f.schemes.isNotEmpty()) Text("  data: ${f.schemes.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("点击可复制单条", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                val txt = ext.intentFilters.joinToString("\n\n") { f ->
+                                    buildString {
+                                        append("[${f.componentType}] ${f.componentName}")
+                                        if (f.actions.isNotEmpty()) append("\n  action: ${f.actions.joinToString(", ")}")
+                                        if (f.categories.isNotEmpty()) append("\n  category: ${f.categories.joinToString(", ")}")
+                                        if (f.schemes.isNotEmpty()) append("\n  data: ${f.schemes.joinToString(", ")}")
+                                    }
+                                }
+                                context.copyToClipboard(txt, "Intent-Filter")
+                                context.toast("已复制 Intent-Filter")
+                            }) { Text("复制全部") }
+                        }
+                        ext.intentFilters.take(200).forEach { f ->
+                            val line = buildString {
+                                append("[${f.componentType}] ${f.componentName}")
+                                if (f.actions.isNotEmpty()) append("\n  action: ${f.actions.joinToString(", ")}")
+                                if (f.categories.isNotEmpty()) append("\n  category: ${f.categories.joinToString(", ")}")
+                                if (f.schemes.isNotEmpty()) append("\n  data: ${f.schemes.joinToString(", ")}")
+                            }
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { context.copyToClipboard(line, "Intent-Filter"); context.toast("已复制") }
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Text(line, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(2.dp))
                         }
                     }
                 }
             }
+        }
+        if (ext.manifestText.isNotBlank()) {
+            item { ManifestCard(ext.manifestText, context) }
+        }
+    }
+}
+
+/** 可点击复制单项、并可一键复制全部的组件/权限列表卡片 */
+@Composable
+private fun ComponentListCard(title: String, list: List<String>, context: Context) {
+    SectionCard(title = "$title (${list.size})") {
+        Column(Modifier.padding(14.dp)) {
+            if (list.isEmpty()) {
+                Text("(空)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("点击任意条目复制", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        context.copyToClipboard(list.joinToString("\n"), title)
+                        context.toast("已复制全部 $title")
+                    }) { Text("复制全部") }
+                }
+                list.take(300).forEach { item ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { context.copyToClipboard(item, title); context.toast("已复制") }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("• $item", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Icon(
+                            Icons.Filled.ContentCopy,
+                            contentDescription = "复制",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 6.dp).size(15.dp)
+                        )
+                    }
+                }
+                if (list.size > 300) {
+                    Text("… 仅显示前 300 条，可用「复制全部」获取完整列表", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManifestCard(text: String, context: Context) {
+    SectionCard(title = "AndroidManifest.xml") {
+        Column(Modifier.padding(14.dp)) {
+            TextButton(onClick = {
+                context.copyToClipboard(text, "AndroidManifest.xml")
+                context.toast("已复制 Manifest")
+            }) { Text("复制全部") }
+            Text(text.take(8000), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
         }
     }
 }
@@ -337,16 +462,7 @@ private fun FilesTab(entries: List<String>, apkPath: String, onOpen: (String, Bo
     }
 }
 
-@Composable
-private fun ListBlock(list: List<String>) {
-    Column(Modifier.padding(14.dp)) {
-        if (list.isEmpty()) {
-            Text("(空)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            list.take(300).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-        }
-    }
-}
+
 
 @Composable
 private fun InfoLine(label: String, value: String) {

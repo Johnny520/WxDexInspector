@@ -9,6 +9,7 @@ material = "1.14.0"
 gson = "2.11.0"
 shizuku = "13.1.5"
 dexkit = "2.3.0"
+backdrop = "1.0.6"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -28,6 +29,7 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
 shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
 dexkit = { group = "org.luckypray", name = "dexkit", version.ref = "dexkit" }
+backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

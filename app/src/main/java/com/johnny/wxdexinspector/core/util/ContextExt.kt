@@ -15,3 +15,11 @@ tailrec fun Context.findActivity(): Activity? = when (this) {
 fun Context.toast(message: String) {
     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
+
+/** 复制文本到剪贴板 */
+fun Context.copyToClipboard(text: String, label: String = "WxDexInspector") {
+    runCatching {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText(label, text))
+    }
+}

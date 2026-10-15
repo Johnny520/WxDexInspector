@@ -72,7 +72,7 @@ fun HomeScreen(
             SettingRow("运行日志", "彩色分级实时日志", Icons.Filled.Terminal, onClick = onOpenLogs)
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(104.dp))
     }
 }
 

@@ -54,9 +54,9 @@ fun AboutScreen() {
         Head("项目信息")
         Para("开发者：Johnny")
         Para("开源协议：Apache 2.0")
-        Para("当前版本：1.0.0")
+        Para("当前版本：1.0.1")
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(108.dp))
     }
 }
 
