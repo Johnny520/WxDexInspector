@@ -45,7 +45,7 @@ class DexScanner(
 
         val bridge = DexKitBridge.create(apkPath)
         try {
-            dexNum = runCatching { bridge.dexNum }.getOrDefault(0)
+            dexNum = runCatching { bridge.getDexNum() }.getOrDefault(0)
             log("DexKit 加载完成，DEX 数量：$dexNum")
 
             val classList = bridge.findClass(FindClass.create())

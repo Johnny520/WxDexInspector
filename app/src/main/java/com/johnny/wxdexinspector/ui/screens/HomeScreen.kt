@@ -1,6 +1,5 @@
 package com.johnny.wxdexinspector.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +16,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.data.model.ScanMode
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.components.SettingRow
@@ -33,8 +32,11 @@ import com.johnny.wxdexinspector.ui.components.StatusPill
 
 @Composable
 fun HomeScreen(
+    modeLabel: String,
     onOpenStatus: () -> Unit,
-    onOpenMode: (ScanMode) -> Unit
+    onOpenMode: (ScanMode) -> Unit,
+    onOpenExtract: () -> Unit,
+    onOpenLogs: () -> Unit
 ) {
     Column(
         Modifier
@@ -45,22 +47,10 @@ fun HomeScreen(
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(
-                    "WxDexInspector",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "微信APK静态分析工具箱",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("WxDexInspector", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("微信APK静态分析工具箱", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            StatusPill(
-                text = AppPrefs.workMode.label.take(6),
-                ok = true,
-                onClick = onOpenStatus
-            )
+            StatusPill(text = modeLabel.take(7), ok = true, onClick = onOpenStatus)
         }
 
         Spacer(Modifier.height(8.dp))
@@ -77,18 +67,9 @@ fun HomeScreen(
         }
 
         SectionCard(title = "快捷操作") {
-            SettingRow(
-                title = "导入外部APK扫描",
-                subtitle = "纯静态模式即可使用，无需授权",
-                icon = Icons.Filled.FolderOpen,
-                onClick = { onOpenMode(ScanMode.SINGLE) }
-            )
-            SettingRow(
-                title = "提取本机应用",
-                subtitle = "Shizuku / Root 模式支持",
-                icon = Icons.Filled.Download,
-                onClick = { onOpenMode(ScanMode.SINGLE) }
-            )
+            SettingRow("导入 / 提取 APK", "纯静态导入或 Shizuku/Root 提取", Icons.Filled.Download, onClick = onOpenExtract)
+            SettingRow("打开存储文件夹", "查看导出报告与快照", Icons.Filled.FolderOpen, onClick = onOpenExtract)
+            SettingRow("运行日志", "彩色分级实时日志", Icons.Filled.Terminal, onClick = onOpenLogs)
         }
 
         Spacer(Modifier.height(24.dp))

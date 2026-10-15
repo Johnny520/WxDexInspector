@@ -1,47 +1,86 @@
 package com.johnny.wxdexinspector.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.johnny.wxdexinspector.core.permission.PermissionManager
 import com.johnny.wxdexinspector.core.util.findActivity
 import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.data.model.NavStyle
+import com.johnny.wxdexinspector.data.model.ScanMode
 import com.johnny.wxdexinspector.data.model.ThemeMode
 import com.johnny.wxdexinspector.ui.components.WxBottomBar
 import com.johnny.wxdexinspector.ui.dialog.DisclaimerDialog
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
 import com.johnny.wxdexinspector.ui.screens.AboutScreen
+import com.johnny.wxdexinspector.ui.screens.ApkDetailScreen
+import com.johnny.wxdexinspector.ui.screens.BatchScreen
+import com.johnny.wxdexinspector.ui.screens.DiffScreen
+import com.johnny.wxdexinspector.ui.screens.ExtractScreen
 import com.johnny.wxdexinspector.ui.screens.HistoryScreen
 import com.johnny.wxdexinspector.ui.screens.HomeScreen
+import com.johnny.wxdexinspector.ui.screens.LogScreen
+import com.johnny.wxdexinspector.ui.screens.ScanScreen
 import com.johnny.wxdexinspector.ui.screens.SettingsScreen
+import com.johnny.wxdexinspector.ui.screens.SnapshotDetailScreen
 import com.johnny.wxdexinspector.ui.theme.WxDexTheme
 import com.johnny.wxdexinspector.ui.theme.isCurrentDark
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+sealed interface Route {
+    data object Extract : Route
+    data class Detail(val path: String, val source: String) : Route
+    data class Scan(val path: String, val source: String, val mode: ScanMode) : Route
+    data class SnapshotDetail(val path: String) : Route
+    data class Diff(val initial: String?) : Route
+    data object Batch : Route
+    data object Logs : Route
+}
 
 @Composable
 fun AppRoot() {
     val view = LocalView.current
+    val context = LocalContext.current
 
     var themeMode by remember { mutableStateOf(AppPrefs.themeMode) }
     var navStyle by remember { mutableStateOf(AppPrefs.navStyle) }
     var glassAlpha by remember { mutableFloatStateOf(AppPrefs.glassAlpha) }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(0) }
 
     var showDisclaimer by remember { mutableStateOf(!AppPrefs.disclaimerAccepted) }
     var statusDialog by remember { mutableStateOf(false) }
+    var permText by remember { mutableStateOf("检测中…") }
+    var routeStack = remember { mutableStateListOf<Route>() }
+
+    LaunchedEffect(tab) {
+        permText = withContext(Dispatchers.IO) {
+            val s = PermissionManager.snapshot(context)
+            "当前工作模式：${s.effective.label}\n\n" +
+                "Root：${s.root.label}\n" +
+                "Shizuku：${s.shizuku.label}\n" +
+                "文件存储权限：${s.storage.label}"
+        }
+    }
 
     WxDexTheme(themeMode) {
         val dark = isCurrentDark(themeMode)
@@ -52,38 +91,90 @@ fun AppRoot() {
             controller.isAppearanceLightNavigationBars = !dark
         }
 
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                WxBottomBar(
-                    style = navStyle,
-                    alpha = glassAlpha,
-                    current = tab,
-                    onSelect = { tab = it }
-                )
+        val current = routeStack.lastOrNull()
+        if (current == null) {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                bottomBar = {
+                    WxBottomBar(
+                        style = navStyle,
+                        alpha = glassAlpha,
+                        current = tab,
+                        onSelect = { tab = it }
+                    )
+                }
+            ) { padding ->
+                Box(Modifier.fillMaxSize().padding(padding)) {
+                    when (tab) {
+                        0 -> HomeScreen(
+                            modeLabel = permText.lineSequence().firstOrNull()?.removePrefix("当前工作模式：") ?: "自动检测",
+                            onOpenStatus = { statusDialog = true },
+                            onOpenMode = { mode ->
+                                when (mode) {
+                                    ScanMode.SINGLE -> routeStack.add(Route.Extract)
+                                    ScanMode.DIFF -> routeStack.add(Route.Diff(null))
+                                    ScanMode.BATCH -> routeStack.add(Route.Batch)
+                                    ScanMode.SNAPSHOT_DIFF -> routeStack.add(Route.Diff(null))
+                                    ScanMode.SNAPSHOT_BROWSE -> tab = 1
+                                }
+                            },
+                            onOpenExtract = { routeStack.add(Route.Extract) },
+                            onOpenLogs = { routeStack.add(Route.Logs) }
+                        )
+                        1 -> HistoryScreen(
+                            onOpenSnapshot = { routeStack.add(Route.SnapshotDetail(it)) },
+                            onOpenDiff = { routeStack.add(Route.Diff(null)) },
+                            onOpenLogs = { routeStack.add(Route.Logs) }
+                        )
+                        2 -> SettingsScreen(
+                            themeMode = themeMode,
+                            onThemeMode = { themeMode = it; AppPrefs.themeMode = it },
+                            navStyle = navStyle,
+                            onNavStyle = { navStyle = it; AppPrefs.navStyle = it },
+                            glassAlpha = glassAlpha,
+                            onGlassAlpha = { glassAlpha = it; AppPrefs.glassAlpha = it },
+                            onOpenStatus = { statusDialog = true }
+                        )
+                        else -> AboutScreen()
+                    }
+                }
             }
-        ) { padding ->
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                when (tab) {
-                    0 -> HomeScreen(
-                        onOpenStatus = { statusDialog = true },
-                        onOpenMode = { }
-                    )
-                    1 -> HistoryScreen()
-                    2 -> SettingsScreen(
-                        themeMode = themeMode,
-                        onThemeMode = { themeMode = it; AppPrefs.themeMode = it },
-                        navStyle = navStyle,
-                        onNavStyle = { navStyle = it; AppPrefs.navStyle = it },
-                        glassAlpha = glassAlpha,
-                        onGlassAlpha = { glassAlpha = it; AppPrefs.glassAlpha = it },
-                        onOpenStatus = { statusDialog = true }
-                    )
-                    else -> AboutScreen()
+        } else {
+            BackHandler { routeStack.removeAt(routeStack.lastIndex) }
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                    when (current) {
+                        is Route.Extract -> ExtractScreen(
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) },
+                            onOpenDetail = { p, s -> routeStack.add(Route.Detail(p, s)) },
+                            onScan = { p, s -> routeStack.add(Route.Scan(p, s, ScanMode.SINGLE)) }
+                        )
+                        is Route.Detail -> ApkDetailScreen(
+                            apkPath = current.path,
+                            source = current.source,
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) },
+                            onScan = { p, s -> routeStack.add(Route.Scan(p, s, ScanMode.SINGLE)) }
+                        )
+                        is Route.Scan -> ScanScreen(
+                            apkPath = current.path,
+                            source = current.source,
+                            scanMode = current.mode,
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) }
+                        )
+                        is Route.SnapshotDetail -> SnapshotDetailScreen(
+                            filePath = current.path,
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) },
+                            onDiff = { routeStack.add(Route.Diff(it)) }
+                        )
+                        is Route.Diff -> DiffScreen(
+                            initialFile = current.initial,
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) }
+                        )
+                        is Route.Batch -> BatchScreen(
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) }
+                        )
+                        is Route.Logs -> LogScreen(onBack = { routeStack.removeAt(routeStack.lastIndex) })
+                    }
                 }
             }
         }
@@ -98,11 +189,7 @@ fun AppRoot() {
         }
 
         if (statusDialog) {
-            InfoDialog(
-                title = "权限状态",
-                message = "当前工作模式：自动检测\n\n（详细权限检测将在后续版本接入）",
-                onClose = { statusDialog = false }
-            )
+            InfoDialog("权限状态", permText, onClose = { statusDialog = false })
         }
     }
 }

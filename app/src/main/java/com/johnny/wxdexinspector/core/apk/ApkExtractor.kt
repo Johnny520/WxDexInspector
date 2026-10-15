@@ -4,15 +4,13 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.johnny.wxdexinspector.core.log.WxLogger
-import com.johnny.wxdexinspector.core.permission.ShellRunner
 import com.johnny.wxdexinspector.data.model.RunMode
-import rikka.shizuku.Shizuku
 import java.io.File
 
 /**
  * APK 提取器。仅做文件复制（静态读取），不改动任何 APK 内容。
- * - Shizuku：免 Root 提取本机用户应用（含 Split 分包）
- * - Root：可提取用户应用 + 系统预装应用
+ * - Shizuku / Root：提取本机已安装应用（含 Split 分包）
+ * - 提取方式：优先直接读取文件（免 Root 可行场景），失败时 Root 走 su 通道
  */
 object ApkExtractor {
 
@@ -30,11 +28,11 @@ object ApkExtractor {
         }
         if (!destDir.exists()) destDir.mkdirs()
 
-        val paths = listApkPaths(app.packageName, mode)
+        val paths = apkPathsFor(context, app)
         if (paths.isEmpty()) {
-            return ExtractResult.Failure("未获取到 APK 路径（包名：${app.packageName}）。请确认 ${mode.label} 已授权")
+            return ExtractResult.Failure("未获取到 APK 路径（包名：${app.packageName}）")
         }
-        onLog("发现 ${paths.size} 个 APK 路径")
+        onLog("发现 ${paths.size} 个 APK 文件")
 
         val saved = ArrayList<String>()
         for (src in paths) {
@@ -50,50 +48,52 @@ object ApkExtractor {
             }
         }
         return if (saved.isEmpty()) {
-            ExtractResult.Failure("提取失败：无法读取 APK 文件，可能权限不足或文件不存在")
+            ExtractResult.Failure("提取失败：无法读取 APK 文件，可能权限不足。请尝试 Root 模式或手动导入")
         } else {
             ExtractResult.Success(saved, app.packageName)
         }
     }
 
-    private fun listApkPaths(pkg: String, mode: RunMode): List<String> {
-        val result = when (mode) {
-            RunMode.SHIZUKU -> ShellRunner.runShizuku(arrayOf("pm", "path", pkg))
-            RunMode.ROOT -> ShellRunner.runRoot("pm path $pkg")
-            else -> return emptyList()
-        } ?: return emptyList()
-        return result.stdout.lines()
-            .map { it.trim() }
-            .filter { it.startsWith("package:") }
-            .map { it.removePrefix("package:").trim() }
-            .filter { it.isNotEmpty() }
+    /** 收集 base.apk 与所有 split 分包路径 */
+    fun apkPathsFor(context: Context, app: InstalledApp): List<String> {
+        val paths = LinkedHashSet<String>()
+        app.apkPath?.let { paths.add(it) }
+        try {
+            val pi = context.packageManager.getPackageInfo(app.packageName, 0)
+            val ai = pi.applicationInfo
+            ai?.sourceDir?.let { paths.add(it) }
+            ai?.splitSourceDirs?.forEach { paths.add(it) }
+        } catch (t: Throwable) {
+            WxLogger.w(TAG, "获取分包列表失败：${app.packageName}")
+        }
+        return paths.filter { it.isNotBlank() }
     }
 
     private fun copyFile(src: String, dest: File, mode: RunMode): Boolean {
-        return try {
-            when (mode) {
-                RunMode.SHIZUKU -> copyViaShizuku(src, dest)
-                RunMode.ROOT -> copyViaRoot(src, dest)
-                else -> false
-            }
-        } catch (t: Throwable) {
-            WxLogger.e(TAG, "复制失败 $src", t)
-            false
-        }
+        // 1) 直读
+        if (copyDirect(src, dest)) return true
+        // 2) Root 通道
+        if (mode == RunMode.ROOT) return copyViaRoot(src, dest)
+        return false
     }
 
-    private fun copyViaShizuku(src: String, dest: File): Boolean {
-        val p = Shizuku.newProcess(arrayOf("cat", src), null, null)
-        p.inputStream.use { input -> dest.outputStream().use { out -> input.copyTo(out) } }
-        val code = p.waitFor()
-        return code == 0 && dest.length() > 0
+    private fun copyDirect(src: String, dest: File): Boolean = try {
+        val f = File(src)
+        if (!f.canRead()) return false
+        f.inputStream().use { input -> dest.outputStream().use { out -> input.copyTo(out) } }
+        dest.length() > 0
+    } catch (t: Throwable) {
+        false
     }
 
-    private fun copyViaRoot(src: String, dest: File): Boolean {
+    private fun copyViaRoot(src: String, dest: File): Boolean = try {
         val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat '$src'"))
         p.inputStream.use { input -> dest.outputStream().use { out -> input.copyTo(out) } }
         val code = p.waitFor()
-        return code == 0 && dest.length() > 0
+        code == 0 && dest.length() > 0
+    } catch (t: Throwable) {
+        WxLogger.e(TAG, "Root 复制失败 $src", t)
+        false
     }
 
     /** 从 SAF Uri 导入外部 APK（纯静态模式即可用） */

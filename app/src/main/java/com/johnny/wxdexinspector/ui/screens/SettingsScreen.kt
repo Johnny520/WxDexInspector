@@ -2,6 +2,10 @@ package com.johnny.wxdexinspector.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,23 +16,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GppGood
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,9 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.johnny.wxdexinspector.core.StorageManager
+import com.johnny.wxdexinspector.core.permission.PermissionManager
 import com.johnny.wxdexinspector.core.util.toast
 import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.data.model.NavStyle
+import com.johnny.wxdexinspector.data.model.PermState
 import com.johnny.wxdexinspector.data.model.ThemeMode
 import com.johnny.wxdexinspector.data.model.WorkMode
 import com.johnny.wxdexinspector.ui.components.ActionRow
@@ -47,8 +51,12 @@ import com.johnny.wxdexinspector.ui.components.RadioRow
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.components.SettingRow
 import com.johnny.wxdexinspector.ui.components.SwitchRow
+import com.johnny.wxdexinspector.ui.dialog.DISCLAIMER_TEXT
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
 import com.johnny.wxdexinspector.ui.dialog.WxAlertDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @Composable
@@ -62,6 +70,7 @@ fun SettingsScreen(
     onOpenStatus: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var workMode by remember { mutableStateOf(AppPrefs.workMode) }
     var visualReport by remember { mutableStateOf(AppPrefs.visualReport) }
@@ -74,12 +83,24 @@ fun SettingsScreen(
     var autoClean by remember { mutableStateOf(AppPrefs.autoCleanTemp) }
     var backupLog by remember { mutableStateOf(AppPrefs.backupLog) }
 
+    var rootState by remember { mutableStateOf(PermState.UNKNOWN) }
+    var shizukuState by remember { mutableStateOf(PermState.UNKNOWN) }
+    var storageState by remember { mutableStateOf(PermState.UNKNOWN) }
+    var refreshKey by remember { mutableStateOf(0) }
+
     var showDisclaimer by remember { mutableStateOf(false) }
     var showLicense by remember { mutableStateOf(false) }
     var showPathEditor by remember { mutableStateOf(false) }
     var pathInput by remember { mutableStateOf(AppPrefs.storageRoot) }
-
     var storagePath by remember { mutableStateOf(StorageManager.rootPath(context)) }
+
+    LaunchedEffect(refreshKey) {
+        val snap = withContext(Dispatchers.IO) { PermissionManager.snapshot(context, doRootProbe = true) }
+        rootState = snap.root
+        shizukuState = snap.shizuku
+        storageState = snap.storage
+        storagePath = StorageManager.rootPath(context)
+    }
 
     Column(
         Modifier
@@ -90,27 +111,34 @@ fun SettingsScreen(
         Spacer(Modifier.height(14.dp))
         Text("设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-        // ===== 工作模式 =====
         SectionCard(title = "工作模式") {
             WorkMode.entries.forEach { m ->
                 RadioRow(
                     title = m.label,
                     selected = m == workMode,
-                    onClick = { workMode = m; AppPrefs.workMode = m }
+                    onClick = { workMode = m; AppPrefs.workMode = m; refreshKey++ }
                 )
             }
-            ActionRow("重新检测权限", Icons.Filled.GppGood, onClick = onOpenStatus)
-            ActionRow("重新申请授权", Icons.Filled.Lock, onClick = onOpenStatus)
+            ActionRow("重新检测权限", Icons.Filled.GppGood, onClick = { refreshKey++ })
+            ActionRow("重新申请授权", Icons.Filled.Lock, onClick = {
+                when {
+                    shizukuState == PermState.DENIED || shizukuState == PermState.UNAVAILABLE ->
+                        PermissionManager.requestShizukuPermission { ok ->
+                            context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败")
+                            refreshKey++
+                        }
+                    storageState != PermState.GRANTED -> requestAllFiles(context)
+                    else -> context.toast("权限已就绪")
+                }
+            })
         }
 
-        // ===== 权限状态卡片 =====
         SectionCard(title = "权限状态") {
-            SettingRow("Root", permLabel(false), icon = Icons.Filled.Lock, onClick = onOpenStatus)
-            SettingRow("Shizuku", permLabel(false), icon = Icons.Filled.GppGood, onClick = onOpenStatus)
-            SettingRow("文件存储权限", permLabel(true), icon = Icons.Filled.Storage, onClick = onOpenStatus)
+            SettingRow("Root", rootState.label(), icon = Icons.Filled.Lock, onClick = { refreshKey++ })
+            SettingRow("Shizuku", shizukuState.label(), icon = Icons.Filled.GppGood, onClick = { refreshKey++ })
+            SettingRow("文件存储权限", storageState.label(), icon = Icons.Filled.Storage, onClick = { refreshKey++ })
         }
 
-        // ===== 导航栏设置 =====
         SectionCard(title = "导航栏设置") {
             NavStyle.entries.forEach { s ->
                 RadioRow(title = s.label, selected = s == navStyle, onClick = { onNavStyle(s) })
@@ -135,19 +163,16 @@ fun SettingsScreen(
             }
         }
 
-        // ===== 主题设置 =====
         SectionCard(title = "主题设置") {
             ThemeMode.entries.forEach { t ->
                 RadioRow(title = t.label, selected = t == themeMode, onClick = { onThemeMode(t) })
             }
         }
 
-        // ===== 扫描功能设置 =====
         SectionCard(title = "扫描功能设置") {
             SwitchRow("扫描生成可视化图片报告", visualReport, { visualReport = it; AppPrefs.visualReport = it })
         }
 
-        // ===== 拓展功能 =====
         SectionCard(title = "拓展功能（附加可选检测模块）") {
             Text(
                 "提示：拓展功能属于顺手附加能力，本软件核心功能为微信APK模块适配。关闭拓展可减少扫描耗时。",
@@ -164,21 +189,25 @@ fun SettingsScreen(
             SwitchRow("解析 resources.arsc 资源字符串表", extArsc, { extArsc = it; AppPrefs.extArsc = it }, enabled = extMaster)
         }
 
-        // ===== 存储与文件管理 =====
         SectionCard(title = "存储与文件管理") {
             SettingRow("存储根目录", storagePath, icon = Icons.Filled.Storage)
-            ActionRow("打开存储文件夹", Icons.Filled.FolderOpen) {
-                openFolder(context, StorageManager.rootDir(context))
-            }
+            ActionRow("打开存储文件夹", Icons.Filled.FolderOpen) { openFolder(context, StorageManager.rootDir(context)) }
             ActionRow("修改存储目录", Icons.Filled.Description) {
                 pathInput = AppPrefs.storageRoot
                 showPathEditor = true
             }
-            SwitchRow("扫描完成自动清理临时缓存", autoClean, { autoClean = it; AppPrefs.autoCleanTemp = it })
+            SwitchRow("扫描完成自动清理临时缓存", autoClean, {
+                autoClean = it; AppPrefs.autoCleanTemp = it
+                if (it) {
+                    scope.launch {
+                        val freed = withContext(Dispatchers.IO) { StorageManager.cleanTemp(context) }
+                        context.toast("已清理临时缓存 ${freed / 1024} KB")
+                    }
+                }
+            })
             SwitchRow("独立备份日志文件", backupLog, { backupLog = it; AppPrefs.backupLog = it })
         }
 
-        // ===== 法律与声明 =====
         SectionCard(title = "法律与声明") {
             ActionRow("查看免责声明", Icons.Filled.Description) { showDisclaimer = true }
             ActionRow("查看开源协议", Icons.Filled.GppGood) { showLicense = true }
@@ -187,12 +216,9 @@ fun SettingsScreen(
         Spacer(Modifier.height(28.dp))
     }
 
-    if (showDisclaimer) {
-        InfoDialog("免责声明 & 使用须知", com.johnny.wxdexinspector.ui.dialog.DISCLAIMER_TEXT) { showDisclaimer = false }
-    }
-    if (showLicense) {
-        InfoDialog("开源协议", "Apache License 2.0\n\nCopyright (c) 2026 Johnny520\n\nLicensed under the Apache License, Version 2.0. 完整协议文本见仓库根目录 LICENSE 文件。") { showLicense = false }
-    }
+    if (showDisclaimer) InfoDialog("免责声明 & 使用须知", DISCLAIMER_TEXT) { showDisclaimer = false }
+    if (showLicense) InfoDialog("开源协议", "Apache License 2.0\n\nCopyright (c) 2026 Johnny520\n\nLicensed under the Apache License, Version 2.0. 完整协议文本见仓库根目录 LICENSE 文件。") { showLicense = false }
+
     if (showPathEditor) {
         WxAlertDialog(
             onDismissRequest = { showPathEditor = false },
@@ -223,7 +249,12 @@ fun SettingsScreen(
     }
 }
 
-private fun permLabel(ok: Boolean): String = if (ok) "✅ 已授权" else "❌ 未授权"
+private fun PermState.label(): String = when (this) {
+    PermState.GRANTED -> "✅ 已授权"
+    PermState.DENIED -> "❌ 未授权"
+    PermState.UNAVAILABLE -> "⚠ 不可用"
+    PermState.UNKNOWN -> "… 检测中"
+}
 
 private fun openFolder(context: Context, dir: File) {
     runCatching {
@@ -235,4 +266,20 @@ private fun openFolder(context: Context, dir: File) {
         }
         context.startActivity(intent)
     }.onFailure { context.toast("无法打开文件夹：${it.message}") }
+}
+
+private fun requestAllFiles(context: Context) {
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                .setData(Uri.parse("package:${context.packageName}"))
+            context.startActivity(intent)
+        } else {
+            context.toast("存储权限已就绪")
+        }
+    } catch (t: Throwable) {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+        }.onFailure { context.toast("无法打开授权页面：${t.message}") }
+    }
 }
