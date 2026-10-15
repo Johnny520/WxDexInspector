@@ -26,3 +26,10 @@
 
 # Kotlin reflection / stdlib
 -dontwarn kotlin.**
+
+# ===== 液态玻璃库 Kyant0/AndroidLiquidGlass (backdrop) =====
+-keep class com.kyant.backdrop.** { *; }
+-keep class com.kyant.shapes.** { *; }
+-dontwarn com.kyant.**
+# Shaders.kt 使用 org.intellij.lang.annotations.Language（库侧 compileOnly，消费端可能缺失）
+-dontwarn org.intellij.lang.annotations.**
