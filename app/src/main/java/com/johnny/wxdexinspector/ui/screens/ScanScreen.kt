@@ -45,6 +45,7 @@ import com.johnny.wxdexinspector.core.scan.ScanResult
 import com.johnny.wxdexinspector.data.model.ScanMode
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
+import com.johnny.wxdexinspector.ui.dialog.WxAlertDialog
 import com.johnny.wxdexinspector.ui.theme.WxRadius
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -94,7 +95,19 @@ fun ScanScreen(
         }
     }
 
+    // 大体积 APK 先确认，避免用户误以为「卡死」
+    var pendingBig by remember { mutableStateOf<Long?>(null) }
+    var started by remember { mutableStateOf(false) }
+
     LaunchedEffect(apkPath) {
+        val size = withContext(Dispatchers.IO) {
+            runCatching { java.io.File(apkPath).length() }.getOrDefault(0L)
+        }
+        if (size > 120L * 1024 * 1024) pendingBig = size else started = true
+    }
+
+    LaunchedEffect(apkPath, started) {
+        if (!started) return@LaunchedEffect
         running = true
         logs = emptyList()
         result = null
@@ -231,6 +244,23 @@ fun ScanScreen(
                     }
                 }
             }
+        }
+    }
+
+    pendingBig?.let { size ->
+        WxAlertDialog(
+            onDismissRequest = { pendingBig = null; onBack() },
+            title = "大体积 APK 提示",
+            confirmText = "继续扫描",
+            onConfirm = { pendingBig = null; started = true },
+            dismissText = "返回",
+            onDismiss = { pendingBig = null; onBack() }
+        ) {
+            Text(
+                "当前 APK 体积约 ${size / 1024 / 1024} MB，深度解析可能耗时较长（数分钟）并占用较多内存，" +
+                    "建议先关闭其他后台应用。\n\n解析过程中可随时点「取消扫描」中断。",
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
     }
 
