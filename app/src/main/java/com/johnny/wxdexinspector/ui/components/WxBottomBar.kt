@@ -96,7 +96,8 @@ private fun GlassBar(
     backdrop: LayerBackdrop?,
     modifier: Modifier
 ) {
-    val shape = RoundedCornerShape(28.dp)
+    // 整体胶囊形（两端全圆，像一根火腿肠），而非只把四角做圆
+    val shape = RoundedCornerShape(percent = 50)
     val scheme = MaterialTheme.colorScheme
     val surface = scheme.surface.copy(alpha = alpha.coerceIn(0.2f, 0.9f))
 

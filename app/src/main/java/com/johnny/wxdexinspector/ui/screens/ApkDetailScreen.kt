@@ -30,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -436,13 +437,36 @@ private fun ArscTab(arsc: List<String>?, onLoad: () -> Unit) {
 
 @Composable
 private fun FilesTab(entries: List<String>, apkPath: String, onOpen: (String, Boolean) -> Unit) {
+    val context = LocalContext.current
     val imageExt = listOf(".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
     val textExt = listOf(".txt", ".json", ".xml", ".html", ".js", ".css", ".md", ".properties", ".ini")
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(entries, query) {
+        if (query.isBlank()) entries else entries.filter { it.contains(query, ignoreCase = true) }
+    }
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
-            Text("APK 内部文件（${entries.size}）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "APK 内部文件（${filtered.size}/${entries.size}）",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = {
+                    context.copyToClipboard(filtered.joinToString("\n"), "APK文件列表")
+                    context.toast("已复制文件列表")
+                }) { Text("复制全部") }
+            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                placeholder = { Text("搜索文件名 / 路径") },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+            )
         }
-        items(entries.take(3000)) { name ->
+        items(filtered.take(3000)) { name ->
             val lower = name.lowercase()
             val isImg = imageExt.any { lower.endsWith(it) }
             val isTxt = textExt.any { lower.endsWith(it) }

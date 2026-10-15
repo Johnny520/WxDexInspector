@@ -19,6 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GppGood
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Storage
@@ -39,8 +42,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.johnny.wxdexinspector.BuildConfig
 import com.johnny.wxdexinspector.core.StorageManager
 import com.johnny.wxdexinspector.core.permission.PermissionManager
+import com.johnny.wxdexinspector.core.update.UpdateChecker
+import com.johnny.wxdexinspector.core.util.openUrl
 import com.johnny.wxdexinspector.core.util.toast
 import com.johnny.wxdexinspector.data.AppPrefs
 import com.johnny.wxdexinspector.data.model.NavStyle
@@ -48,6 +54,7 @@ import com.johnny.wxdexinspector.data.model.PermState
 import com.johnny.wxdexinspector.data.model.ThemeMode
 import com.johnny.wxdexinspector.data.model.WorkMode
 import com.johnny.wxdexinspector.ui.components.ActionRow
+import com.johnny.wxdexinspector.ui.components.CheckUpdateActionRow
 import com.johnny.wxdexinspector.ui.components.RadioRow
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.components.SettingRow
@@ -263,6 +270,13 @@ fun SettingsScreen(
                 }
             })
             SwitchRow("独立备份日志文件", backupLog, { backupLog = it; AppPrefs.backupLog = it })
+        }
+
+        SectionCard(title = "关于与更新") {
+            SettingRow("当前版本", "v${BuildConfig.VERSION_NAME} · Apache-2.0", icon = Icons.Filled.Info)
+            CheckUpdateActionRow()
+            ActionRow("项目主页 (GitHub)", Icons.Filled.Link) { context.openUrl(UpdateChecker.GITHUB_REPO) }
+            ActionRow("问题反馈 / 建议", Icons.Filled.BugReport) { context.openUrl(UpdateChecker.ISSUES_PAGE) }
         }
 
         SectionCard(title = "法律与声明") {
