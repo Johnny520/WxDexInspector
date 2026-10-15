@@ -3,6 +3,7 @@ package com.johnny.wxdexinspector
 import android.app.Application
 import com.johnny.wxdexinspector.core.StorageManager
 import com.johnny.wxdexinspector.core.log.WxLogger
+import com.johnny.wxdexinspector.core.crash.CrashHandler
 import com.johnny.wxdexinspector.core.plugin.PluginRegistry
 import com.johnny.wxdexinspector.data.AppPrefs
 
@@ -14,6 +15,7 @@ class WxApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        CrashHandler.install(this)
         AppPrefs.init(this)
         WxLogger.init(this)
         StorageManager.ensureDirs(this)

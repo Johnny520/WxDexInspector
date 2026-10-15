@@ -24,12 +24,22 @@ object ScanOrchestrator {
 
     private const val TAG = "Scan"
 
+    /** 当前正在执行的扫描器（用于「取消扫描」） */
+    @Volatile
+    private var activeScanner: DexScanner? = null
+
+    /** 请求取消当前扫描（可从任意线程调用） */
+    fun cancelCurrent() {
+        runCatching { activeScanner?.cancel() }
+    }
+
     fun scan(
         context: Context,
         apkPath: String,
         source: String,
         scanMode: ScanMode = ScanMode.SINGLE,
-        onLog: (String) -> Unit = {}
+        onLog: (String) -> Unit = {},
+        onProgress: (Float, String) -> Unit = { _, _ -> }
     ): ScanResult {
         val t0 = System.currentTimeMillis()
         val mode = PermissionManager.resolveMode(context)
@@ -46,8 +56,27 @@ object ScanOrchestrator {
         WxLogger.i(TAG, "包名 ${meta.packageName}｜版本 ${meta.versionName}｜大小 ${meta.sizeBytes / 1024 / 1024} MB")
         onLog("APK：${meta.appLabel.ifBlank { meta.fileName }}（${meta.packageName}）")
 
+        val apkSize = runCatching { File(apkPath).length() }.getOrDefault(0L)
+        val limits = DexScanner.Limits.forApkSize(apkSize)
         onLog("【核心】开始 DEX 深度解析…")
-        val dex = DexScanner(apkPath, onLog).scan()
+        onLog("APK 体积 ${apkSize / 1024 / 1024} MB｜明细上限自适应：类 ${limits.maxClasses} / 方法 ${limits.maxMethods} / Hook 候选 ${limits.maxHookCandidates}")
+        onLog(memoryText("解析前"))
+        val scanner = DexScanner(apkPath, onLog, onProgress)
+        activeScanner = scanner
+        val dex = try {
+            scanner.scan(limits)
+        } catch (e: OutOfMemoryError) {
+            WxLogger.e(TAG, "DEX 解析内存不足", e)
+            throw IllegalStateException(
+                memoryText("内存不足时") +
+                    "\n内存不足，DEX 解析中断。建议：①在「设置 → 拓展功能」关闭拓展检测后重试；" +
+                    "②改用体积更小的 APK；③关闭其他后台应用或重启本应用后再试。",
+                e
+            )
+        } finally {
+            activeScanner = null
+        }
+        onLog(memoryText("解析后"))
 
         var ext: ExtensionResult? = null
         if (extEnabled) {
@@ -87,6 +116,12 @@ object ScanOrchestrator {
         onLog("扫描完成，耗时 $elapsed 秒")
 
         return result.copy(logFilePath = snap?.absolutePath)
+    }
+
+    private fun memoryText(where: String): String {
+        val rt = Runtime.getRuntime()
+        val used = (rt.totalMemory() - rt.freeMemory()) / 1024 / 1024
+        return "内存[$where]：已用 ${used} MB / 上限 ${rt.maxMemory() / 1024 / 1024} MB"
     }
 
     fun export(context: Context, result: ScanResult, includeVisual: Boolean, onLog: (String) -> Unit = {}): File? {

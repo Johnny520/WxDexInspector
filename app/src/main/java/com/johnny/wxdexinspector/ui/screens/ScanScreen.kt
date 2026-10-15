@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.johnny.wxdexinspector.core.dex.ScanCancelledException
 import com.johnny.wxdexinspector.core.scan.ScanOrchestrator
 import com.johnny.wxdexinspector.core.scan.ScanResult
 import com.johnny.wxdexinspector.data.model.ScanMode
@@ -57,7 +58,8 @@ fun ScanScreen(
     apkPath: String,
     source: String,
     scanMode: ScanMode,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenLogs: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -68,6 +70,9 @@ fun ScanScreen(
     var result by remember { mutableStateOf<ScanResult?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var exportInfo by remember { mutableStateOf<String?>(null) }
+    var progress by remember { mutableStateOf(0f) }
+    var progressText by remember { mutableStateOf("准备中…") }
+    val progressRef = remember { java.util.concurrent.atomic.AtomicReference(0f to "准备中…") }
 
     // 日志收集协程（避免跨线程改状态）
     LaunchedEffect(Unit) {
@@ -81,21 +86,38 @@ fun ScanScreen(
                 }
                 if (add.isNotEmpty()) logs = (logs + add).takeLast(500)
             }
+            val p = progressRef.get()
+            if (p.first != progress || p.second != progressText) {
+                progress = p.first
+                progressText = p.second
+            }
         }
     }
 
     LaunchedEffect(apkPath) {
         running = true
         logs = emptyList()
+        result = null
+        error = null
+        progress = 0f
+        progressText = "准备中…"
+        progressRef.set(0f to "准备中…")
         try {
             val r = withContext(Dispatchers.IO) {
-                ScanOrchestrator.scan(context, apkPath, source, scanMode) { line -> logQueue.add(line) }
+                ScanOrchestrator.scan(context, apkPath, source, scanMode, { line -> logQueue.add(line) }) { p, text ->
+                    progressRef.set(p.coerceIn(0f, 1f) to text)
+                }
             }
             result = r
+        } catch (ce: ScanCancelledException) {
+            error = "扫描已取消。"
         } catch (t: Throwable) {
-            error = t.message ?: t.toString()
+            error = (t.message ?: t.toString()) +
+                "\n\n若为闪退/内存问题，可点下方「查看最近崩溃」，或到「设置 → 稳定性」查看记录。"
         }
         running = false
+        progress = 1f
+        progressText = if (error == null) "完成" else "已停止"
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -111,7 +133,24 @@ fun ScanScreen(
             if (running) CircularProgressIndicator(Modifier.padding(8.dp).height(24.dp).padding(4.dp))
         }
 
-        if (running) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (running) {
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    progressText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedButton(
+                    onClick = { ScanOrchestrator.cancelCurrent() },
+                    shape = RoundedCornerShape(16.dp)
+                ) { Text("取消扫描") }
+            }
+        }
 
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -139,13 +178,32 @@ fun ScanScreen(
                 }
             } else if (error != null) {
                 item {
-                    SectionCard(title = "扫描失败") {
+                    SectionCard(title = "扫描未完成") {
                         Text(
                             error ?: "",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(16.dp)
                         )
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (onOpenLogs != null) {
+                                OutlinedButton(onClick = onOpenLogs, shape = RoundedCornerShape(16.dp)) { Text("查看运行日志") }
+                            }
+                            Button(
+                                onClick = {
+                                    val t = com.johnny.wxdexinspector.core.crash.CrashHandler.lastCrashText()
+                                    error = if (t.isNullOrBlank()) {
+                                        (error ?: "") + "\n\n（暂无系统级崩溃记录，本次为可捕获的异常）"
+                                    } else {
+                                        t
+                                    }
+                                },
+                                shape = RoundedCornerShape(16.dp)
+                            ) { Text("查看最近崩溃") }
+                        }
                     }
                 }
             }

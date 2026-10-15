@@ -39,6 +39,7 @@ import com.johnny.wxdexinspector.core.StorageManager
 import com.johnny.wxdexinspector.core.apk.ApkExtractor
 import com.johnny.wxdexinspector.core.scan.ScanOrchestrator
 import com.johnny.wxdexinspector.core.scan.ScanResult
+import com.johnny.wxdexinspector.core.snapshot.SnapshotManager
 import com.johnny.wxdexinspector.data.model.ScanMode
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
@@ -110,10 +111,10 @@ fun BatchScreen(onBack: () -> Unit) {
                             progress = i.toFloat() / files.size
                             val r = runCatching {
                                 withContext(Dispatchers.IO) {
-                                    ScanOrchestrator.scan(context, f.absolutePath, "batch", ScanMode.BATCH) {}
+                                    ScanOrchestrator.scan(context, f.absolutePath, "batch", ScanMode.BATCH, {})
                                 }
                             }.getOrNull()
-                            if (r != null) acc.add(r)
+                            if (r != null) acc.add(r.slimForBatch())
                             results = acc.toList()
                         }
                         progress = 1f
@@ -140,6 +141,11 @@ fun BatchScreen(onBack: () -> Unit) {
             item {
                 if (results.isNotEmpty()) {
                     Text("扫描结果（${results.size}）", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                    Text(
+                        "明细已保存为 .wxsnap 快照，列表仅展示概要以避免批量扫描占用过多内存；导出时会自动读回完整数据。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
             items(results) { r ->
@@ -152,7 +158,13 @@ fun BatchScreen(onBack: () -> Unit) {
                             onClick = {
                                 scope.launch {
                                     val zip = withContext(Dispatchers.IO) {
-                                        ScanOrchestrator.export(context, r, com.johnny.wxdexinspector.data.AppPrefs.visualReport)
+                                        // 内存中只保留概要，导出时按需从快照读回完整数据
+                                        val full = r.logFilePath
+                                            ?.let { java.io.File(it) }
+                                            ?.takeIf { it.isFile }
+                                            ?.let { SnapshotManager.load(it) }
+                                            ?: r
+                                        ScanOrchestrator.export(context, full, com.johnny.wxdexinspector.data.AppPrefs.visualReport)
                                     }
                                     info = zip?.absolutePath ?: "导出失败"
                                 }
@@ -168,3 +180,12 @@ fun BatchScreen(onBack: () -> Unit) {
 
     info?.let { InfoDialog("导出结果", it) { info = null } }
 }
+
+/** 批量模式只保留概要：多个完整结果同时驻留极易内存不足（完整明细已落盘为快照） */
+private fun ScanResult.slimForBatch(): ScanResult = copy(
+    classNames = emptyList(),
+    methodSigns = emptyList(),
+    fieldSigns = emptyList(),
+    methods = emptyList(),
+    keyStrings = keyStrings.take(200)
+)

@@ -22,7 +22,7 @@ object ReportGenerator {
         val files = ArrayList<File>()
 
         files += write(workDir, "scan_env_info.txt", envInfo(result))
-        files += write(workDir, "all_classes.txt", result.classNames.joinToString("\n"))
+        files += writeLines(workDir, "all_classes.txt", result.classNames)
         files += write(workDir, "all_methods.csv", methodsCsv(result))
         files += write(workDir, "hook_candidate.json", gson.toJson(result.hookCandidates))
         files += write(workDir, "summary_report.md", summary(result))
@@ -34,7 +34,7 @@ object ReportGenerator {
             files += write(workDir, "apk_cert_info.txt", certInfo(result))
             files += write(workDir, "sdk_detect_report.md", sdkReport(ext))
             files += write(workDir, "component_summary.md", componentReport(ext))
-            files += write(workDir, "arsc_string.txt", ext.arscStrings.joinToString("\n"))
+            files += writeLines(workDir, "arsc_string.txt", ext.arscStrings)
         }
 
         if (includeVisual) {
@@ -50,6 +50,21 @@ object ReportGenerator {
     private fun write(dir: File, name: String, content: String): File {
         val f = File(dir, name)
         f.writeText(content, Charsets.UTF_8)
+        return f
+    }
+
+    /** 逐行流式写入，避免 joinToString 先把超大列表拼成巨型字符串 */
+    private fun writeLines(dir: File, name: String, lines: List<String>): File {
+        val f = File(dir, name)
+        java.io.BufferedWriter(
+            java.io.OutputStreamWriter(java.io.FileOutputStream(f), Charsets.UTF_8),
+            64 * 1024
+        ).use { w ->
+            for (line in lines) {
+                w.append(line)
+                w.append('\n')
+            }
+        }
         return f
     }
 

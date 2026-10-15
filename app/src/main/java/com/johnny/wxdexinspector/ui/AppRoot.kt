@@ -217,7 +217,8 @@ fun AppRoot() {
                             apkPath = current.path,
                             source = current.source,
                             scanMode = current.mode,
-                            onBack = { routeStack.removeAt(routeStack.lastIndex) }
+                            onBack = { routeStack.removeAt(routeStack.lastIndex) },
+                            onOpenLogs = { routeStack.add(Route.Logs) }
                         )
                         is Route.SnapshotDetail -> SnapshotDetailScreen(
                             filePath = current.path,

@@ -18,7 +18,14 @@ object SnapshotManager {
         val dir = StorageManager.snapshotsDir(context)
         val name = "${result.apk.packageName.ifBlank { "apk" }}_${result.apk.versionName.ifBlank { "v0" }}_${result.createdAt}.wxsnap"
         val f = File(dir, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-        f.writeText(gson.toJson(result), Charsets.UTF_8)
+        // 流式写入：避免把整份 JSON 先拼成一个巨型字符串（大 APK 下可达数十 MB）触发 OOM
+        java.io.BufferedWriter(
+            java.io.OutputStreamWriter(java.io.FileOutputStream(f), Charsets.UTF_8),
+            64 * 1024
+        ).use { w ->
+            gson.toJson(result, ScanResult::class.java, w)
+            w.flush()
+        }
         WxLogger.i(TAG, "快照已保存：${f.name}（${f.length() / 1024} KB）")
         f
     } catch (t: Throwable) {
@@ -27,7 +34,9 @@ object SnapshotManager {
     }
 
     fun load(file: File): ScanResult? = try {
-        gson.fromJson(file.readText(Charsets.UTF_8), ScanResult::class.java)
+        java.io.InputStreamReader(java.io.FileInputStream(file), Charsets.UTF_8).use { r ->
+            gson.fromJson(r, ScanResult::class.java)
+        }
     } catch (t: Throwable) {
         WxLogger.e(TAG, "读取快照失败：${file.name}", t)
         null

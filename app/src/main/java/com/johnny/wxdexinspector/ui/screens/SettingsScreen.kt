@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FactCheck
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.johnny.wxdexinspector.BuildConfig
 import com.johnny.wxdexinspector.core.StorageManager
+import com.johnny.wxdexinspector.core.crash.CrashHandler
 import com.johnny.wxdexinspector.core.permission.PermissionManager
 import com.johnny.wxdexinspector.core.update.UpdateChecker
 import com.johnny.wxdexinspector.core.util.openUrl
@@ -105,6 +107,8 @@ fun SettingsScreen(
 
     var showDisclaimer by remember { mutableStateOf(false) }
     var showLicense by remember { mutableStateOf(false) }
+    var crashCount by remember { mutableStateOf(0) }
+    var lastCrash by remember { mutableStateOf<String?>(null) }
     var showPathEditor by remember { mutableStateOf(false) }
     var pathInput by remember { mutableStateOf(AppPrefs.storageRoot) }
     var storagePath by remember { mutableStateOf(StorageManager.rootPath(context)) }
@@ -130,6 +134,7 @@ fun SettingsScreen(
         shizukuState = snap.shizuku
         storageState = snap.storage
         storagePath = StorageManager.rootPath(context)
+        crashCount = CrashHandler.count()
     }
 
     Column(
@@ -316,6 +321,23 @@ fun SettingsScreen(
             )
         }
 
+        SectionCard(title = "稳定性") {
+            SettingRow(
+                "崩溃记录",
+                if (crashCount == 0) "暂无（运行良好）" else "$crashCount 条",
+                icon = Icons.Filled.BugReport
+            )
+            ActionRow("查看最近崩溃", Icons.Filled.BugReport) {
+                val t = CrashHandler.lastCrashText()
+                lastCrash = if (t.isNullOrBlank()) "暂无崩溃记录 🎉" else t
+            }
+            ActionRow("清空崩溃记录", Icons.Filled.Delete) {
+                val n = CrashHandler.clear()
+                crashCount = CrashHandler.count()
+                context.toast("已清空 $n 条崩溃记录")
+            }
+        }
+
         SectionCard(title = "关于与更新") {
             SettingRow("当前版本", "v${BuildConfig.VERSION_NAME} · Apache-2.0", icon = Icons.Filled.Info)
             CheckUpdateActionRow()
@@ -329,6 +351,10 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(108.dp))
+    }
+
+    lastCrash?.let { text ->
+        InfoDialog("最近崩溃记录", text) { lastCrash = null }
     }
 
     if (showDisclaimer) InfoDialog("免责声明 & 使用须知", DISCLAIMER_TEXT) { showDisclaimer = false }
