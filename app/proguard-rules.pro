@@ -9,13 +9,20 @@
 -keep class rikka.shizuku.** { *; }
 -dontwarn rikka.shizuku.**
 
-# Gson model classes (serialized by field name)
--keepclassmembers,allowobfuscation class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
--keep class com.johnny.wxdexinspector.data.model.** { *; }
+# Keep all app classes (small app; simplifies Gson reflection + keeps model fields)
+-keep class com.johnny.wxdexinspector.** { *; }
+-keepclassmembers class com.johnny.wxdexinspector.** { *; }
+
+# Gson
 -keepattributes Signature
 -keepattributes *Annotation*
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+-dontwarn com.google.gson.**
 
-# Keep data/snapshot models referenced by Gson reflection
--keep class com.johnny.wxdexinspector.data.model.** { *; }
+# Shizuku / hidden API usage safety
+-dontwarn android.os.**
+-dontwarn java.lang.reflect.**
+
+# Kotlin reflection / stdlib
+-dontwarn kotlin.**
