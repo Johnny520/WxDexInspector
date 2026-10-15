@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GppGood
 import androidx.compose.material.icons.filled.BugReport
@@ -55,12 +56,14 @@ import com.johnny.wxdexinspector.data.model.ThemeMode
 import com.johnny.wxdexinspector.data.model.WorkMode
 import com.johnny.wxdexinspector.ui.components.ActionRow
 import com.johnny.wxdexinspector.ui.components.CheckUpdateActionRow
+import com.johnny.wxdexinspector.ui.components.OnResume
 import com.johnny.wxdexinspector.ui.components.RadioRow
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.components.SettingRow
 import com.johnny.wxdexinspector.ui.components.SwitchRow
 import com.johnny.wxdexinspector.ui.dialog.DISCLAIMER_TEXT
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
+import com.johnny.wxdexinspector.ui.dialog.PermissionOverviewDialog
 import com.johnny.wxdexinspector.ui.dialog.WxAlertDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -95,6 +98,8 @@ fun SettingsScreen(
     var shizukuState by remember { mutableStateOf(PermState.UNKNOWN) }
     var storageState by remember { mutableStateOf(PermState.UNKNOWN) }
     var refreshKey by remember { mutableStateOf(0) }
+    var forceProbe by remember { mutableStateOf(false) }
+    var showPermOverview by remember { mutableStateOf(false) }
 
     var showDisclaimer by remember { mutableStateOf(false) }
     var showLicense by remember { mutableStateOf(false) }
@@ -112,8 +117,13 @@ fun SettingsScreen(
         }
     }
 
+    // 从系统设置 / 授权页切回前台时自动刷新（权限状态实时更新）
+    OnResume { refreshKey++ }
+
     LaunchedEffect(refreshKey) {
-        val snap = withContext(Dispatchers.IO) { PermissionManager.snapshot(context, doRootProbe = true) }
+        val probe = forceProbe
+        forceProbe = false
+        val snap = withContext(Dispatchers.IO) { PermissionManager.snapshot(context, doRootProbe = probe) }
         rootState = snap.root
         shizukuState = snap.shizuku
         storageState = snap.storage
@@ -134,10 +144,33 @@ fun SettingsScreen(
                 RadioRow(
                     title = m.label,
                     selected = m == workMode,
-                    onClick = { workMode = m; AppPrefs.workMode = m; refreshKey++ }
+                    onClick = {
+                        workMode = m
+                        AppPrefs.workMode = m
+                        refreshKey++
+                        // 选择高权限模式时，若对应权限未就绪则立即发起申请
+                        when (m) {
+                            WorkMode.ROOT -> {
+                                if (PermissionManager.isRootAvailable()) requestRootPermission()
+                                else context.toast("未检测到 su，当前设备可能未 Root")
+                            }
+                            WorkMode.SHIZUKU -> {
+                                if (PermissionManager.isShizukuInstalled()) {
+                                    PermissionManager.requestShizukuPermission { ok ->
+                                        context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败或被拒绝")
+                                        refreshKey++
+                                    }
+                                } else {
+                                    context.toast("未检测到 Shizuku，请先安装并启动 Shizuku")
+                                }
+                            }
+                            else -> Unit
+                        }
+                    }
                 )
             }
-            ActionRow("重新检测权限", Icons.Filled.GppGood, onClick = { refreshKey++ })
+            ActionRow("重新检测权限", Icons.Filled.GppGood, onClick = { forceProbe = true; refreshKey++ })
+            ActionRow("权限总览（查看缺失项）", Icons.Filled.FactCheck, onClick = { showPermOverview = true })
             ActionRow("一键申请/修复权限", Icons.Filled.Lock, onClick = {
                 when {
                     rootState != PermState.GRANTED && PermissionManager.isRootAvailable() -> requestRootPermission()
@@ -289,6 +322,10 @@ fun SettingsScreen(
 
     if (showDisclaimer) InfoDialog("免责声明 & 使用须知", DISCLAIMER_TEXT) { showDisclaimer = false }
     if (showLicense) InfoDialog("开源协议", "Apache License 2.0\n\nCopyright (c) 2026 Johnny520\n\nLicensed under the Apache License, Version 2.0. 完整协议文本见仓库根目录 LICENSE 文件。") { showLicense = false }
+
+    if (showPermOverview) {
+        PermissionOverviewDialog { showPermOverview = false }
+    }
 
     if (showPathEditor) {
         WxAlertDialog(

@@ -28,9 +28,13 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.johnny.wxdexinspector.core.util.findActivity
 import com.johnny.wxdexinspector.data.AppPrefs
+import com.johnny.wxdexinspector.core.util.toast
 import com.johnny.wxdexinspector.data.model.NavStyle
+import com.johnny.wxdexinspector.data.model.WorkMode
+import com.johnny.wxdexinspector.ui.dialog.PermissionOverviewDialog
 import com.johnny.wxdexinspector.data.model.ScanMode
 import com.johnny.wxdexinspector.data.model.ThemeMode
+import com.johnny.wxdexinspector.ui.components.OnResume
 import com.johnny.wxdexinspector.ui.components.WxBottomBar
 import com.johnny.wxdexinspector.ui.dialog.DisclaimerDialog
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
@@ -47,7 +51,9 @@ import com.johnny.wxdexinspector.ui.screens.SettingsScreen
 import com.johnny.wxdexinspector.ui.screens.SnapshotDetailScreen
 import com.johnny.wxdexinspector.ui.theme.WxDexTheme
 import com.johnny.wxdexinspector.ui.theme.isCurrentDark
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 sealed interface Route {
@@ -75,13 +81,50 @@ fun AppRoot() {
     var permText by remember { mutableStateOf("检测中…") }
     var routeStack = remember { mutableStateListOf<Route>() }
 
-    LaunchedEffect(tab) {
+    var permTick by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+
+    // 切回前台 / 授权返回时实时刷新权限状态
+    OnResume { permTick++ }
+
+    LaunchedEffect(tab, permTick) {
         permText = withContext(Dispatchers.IO) {
-            val s = PermissionManager.snapshot(context)
+            // 仅在「期望 Root 且尚未缓存授权」时真实探测一次（此时会弹出授权窗口）
+            val wantRoot = AppPrefs.workMode == WorkMode.ROOT || AppPrefs.workMode == WorkMode.AUTO
+            val probe = wantRoot && !AppPrefs.rootGranted && PermissionManager.isRootAvailable()
+            val s = PermissionManager.snapshot(context, doRootProbe = probe)
             "当前工作模式：${s.effective.label}\n\n" +
                 "Root：${s.root.label}\n" +
                 "Shizuku：${s.shizuku.label}\n" +
                 "文件存储权限：${s.storage.label}"
+        }
+    }
+
+    // 首页/设置页切换工作模式后，立刻申请对应权限并刷新状态
+    fun applyWorkMode(mode: WorkMode, onDone: () -> Unit) {
+        scope.launch {
+            when (mode) {
+                WorkMode.ROOT -> {
+                    if (PermissionManager.isRootAvailable()) {
+                        context.toast("正在申请 Root 权限，请在授权窗口中点击「允许」…")
+                        val ok = withContext(Dispatchers.IO) { PermissionManager.requestRoot() }
+                        context.toast(if (ok) "✅ 已获得 Root 权限" else "未获得 Root 权限（可能被拒绝）")
+                    } else {
+                        context.toast("未检测到 su，当前设备可能未 Root")
+                    }
+                }
+                WorkMode.SHIZUKU -> {
+                    if (PermissionManager.isShizukuInstalled()) {
+                        PermissionManager.requestShizukuPermission { ok ->
+                            context.toast(if (ok) "Shizuku 已授权" else "Shizuku 授权失败或被拒绝")
+                        }
+                    } else {
+                        context.toast("未检测到 Shizuku，请先安装并启动 Shizuku")
+                    }
+                }
+                else -> Unit
+            }
+            onDone()
         }
     }
 
@@ -201,7 +244,11 @@ fun AppRoot() {
         }
 
         if (statusDialog) {
-            InfoDialog("权限状态", permText, onClose = { statusDialog = false })
+            PermissionOverviewDialog(
+                onDismiss = { statusDialog = false },
+                showModeSelector = true,
+                onModeChange = { mode -> applyWorkMode(mode) { permTick++ } }
+            )
         }
     }
 }

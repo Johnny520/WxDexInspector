@@ -80,7 +80,9 @@ object PermissionManager {
             val out = process.inputStream.bufferedReader().readText()
             runCatching { process.errorStream.close() }
             WxLogger.i(TAG, "su -c id 返回: ${out.trim()}")
-            out.contains("uid=0")
+            val granted = out.contains("uid=0")
+            if (granted) AppPrefs.rootGranted = true
+            granted
         } catch (t: Throwable) {
             WxLogger.e(TAG, "申请 Root 权限失败", t)
             false
@@ -95,7 +97,7 @@ object PermissionManager {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             list.add(android.Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
             list.add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
@@ -182,7 +184,11 @@ object PermissionManager {
     // ---------- 决议 ----------
     fun snapshot(context: Context, doRootProbe: Boolean = false): Snapshot {
         val root = when {
-            doRootProbe && canExecuteRoot() -> PermState.GRANTED
+            doRootProbe && canExecuteRoot() -> {
+                AppPrefs.rootGranted = true
+                PermState.GRANTED
+            }
+            AppPrefs.rootGranted -> PermState.GRANTED
             isRootAvailable() -> PermState.DENIED
             else -> PermState.UNAVAILABLE
         }
@@ -208,5 +214,48 @@ object PermissionManager {
                 else -> RunMode.STATIC
             }
         }
+    }
+
+    // ---------- 通知 ----------
+    fun isNotificationGranted(context: Context): Boolean = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // 13 以下安装即授予
+        }
+    } catch (t: Throwable) {
+        true
+    }
+
+    // ---------- 权限总览 ----------
+    data class PermItem(
+        val title: String,
+        val hint: String,
+        val state: PermState,
+        val required: Boolean
+    )
+
+    /** 该类型工具真正需要的权限清单及其实时状态 */
+    fun checklist(context: Context, doRootProbe: Boolean = false): List<PermItem> {
+        val snap = snapshot(context, doRootProbe)
+        return listOf(
+            PermItem(
+                "文件存储（所有文件访问）",
+                "导出报告 / 快照 / 提取 APK 到公共目录",
+                snap.storage, true
+            ),
+            PermItem(
+                "通知",
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                    "扫描完成等提示（Android 13+）"
+                else "系统版本低于 13，安装即授予",
+                if (isNotificationGranted(context)) PermState.GRANTED else PermState.DENIED,
+                false
+            ),
+            PermItem("查询已安装应用", "列出手机内已安装 APK（普通权限，安装即授予）", PermState.GRANTED, true),
+            PermItem("网络访问", "检查更新 / 在线插件市场", PermState.GRANTED, true),
+            PermItem("Root 权限", "免复制、直读任意目录下的 APK", snap.root, false),
+            PermItem("Shizuku 权限", "免 Root 提权，提取已安装 APK", snap.shizuku, false)
+        )
     }
 }

@@ -30,6 +30,7 @@ object AppPrefs {
     private const val K_EXT_PREVIEW = "ext_preview"
     private const val K_EXT_ARSC = "ext_arsc"
     private const val K_DISCLAIMER = "disclaimer_accepted"
+    private const val K_ROOT_GRANTED = "root_granted"
 
     @Volatile
     private lateinit var sp: SharedPreferences
@@ -105,6 +106,11 @@ object AppPrefs {
     var extArsc: Boolean
         get() = sp.getBoolean(K_EXT_ARSC, true)
         set(v) = sp.edit().putBoolean(K_EXT_ARSC, v).apply()
+
+    // ---- Root 授权缓存（避免每次探活都弹授权框）----
+    var rootGranted: Boolean
+        get() = sp.getBoolean(K_ROOT_GRANTED, false)
+        set(v) = sp.edit().putBoolean(K_ROOT_GRANTED, v).apply()
 
     // ---- 免责声明 ----
     var disclaimerAccepted: Boolean
