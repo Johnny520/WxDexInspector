@@ -38,7 +38,7 @@ import com.johnny.wxdexinspector.core.scan.ScanOrchestrator
 import com.johnny.wxdexinspector.core.scan.ScanResult
 import com.johnny.wxdexinspector.core.snapshot.SnapshotManager
 import com.johnny.wxdexinspector.data.AppPrefs
-import com.johnny.wxdexinspector.ui.components.ConfirmDialog
+import com.johnny.wxdexinspector.ui.dialog.ConfirmDialog
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.dialog.InfoDialog
 import kotlinx.coroutines.Dispatchers
