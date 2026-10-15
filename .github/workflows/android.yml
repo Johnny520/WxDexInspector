@@ -42,13 +42,24 @@ jobs:
           /opt/gradle-8.13/bin/gradle --version
 
       - name: Decode signing keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PW: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPW: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/wxdi-release.jks
-          echo "WXDI_KEYSTORE_FILE=/tmp/wxdi-release.jks" >> $GITHUB_ENV
-          echo "WXDI_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "WXDI_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "WXDI_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > /tmp/wxdi-release.jks
+            {
+              echo "WXDI_KEYSTORE_FILE=/tmp/wxdi-release.jks"
+              echo "WXDI_KEYSTORE_PASSWORD=$KS_PW"
+              echo "WXDI_KEY_ALIAS=$KS_ALIAS"
+              echo "WXDI_KEY_PASSWORD=$KS_KEYPW"
+            } >> $GITHUB_ENV
+            echo "signing keystore ready"
+          else
+            echo "no keystore secret; release APK will be unsigned"
+          fi
 
       - name: Build Debug APK
         run: gradle assembleDebug --console=plain --stacktrace
@@ -57,9 +68,7 @@ jobs:
         run: gradle assembleRelease --console=plain --stacktrace
 
       - name: Build info
-        run: |
-          echo "===== outputs ====="
-          find app/build/outputs/apk -name '*.apk' -exec ls -lh {} \;
+        run: find app/build/outputs/apk -name '*.apk' -exec ls -lh {} \;
 
       - name: Upload APKs
         if: always()
