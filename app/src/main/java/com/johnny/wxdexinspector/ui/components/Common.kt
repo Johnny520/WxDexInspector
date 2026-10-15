@@ -163,8 +163,8 @@ fun RadioRow(
 fun ActionRow(
     title: String,
     icon: ImageVector? = null,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = modifier
