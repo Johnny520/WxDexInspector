@@ -10,6 +10,17 @@
 
 > ⚠️ 重要提示：本工具**仅读取APK静态信息**，不提供APK修改、重打包、脱壳、破解、一键去广告功能。用户拿到分析结果后的二次修改操作，属于用户个人行为。
 
+## 📥 下载
+
+前往 [Releases](https://github.com/Johnny520/WxDexInspector/releases) 下载最新 APK：
+
+- `app-release.apk` —— **签名正式包**（约 5.8 MB，推荐安装）
+- `app-debug.apk` —— 调试包（体积较大，用于问题排查）
+
+要求：Android 10 (API 29) 及以上。
+
+> 首次安装若提示「未知来源应用」，请在系统设置中允许安装。若曾安装过其它签名的旧版本，请先卸载再安装。
+
 ## 📱 运行模式
 
 1. 纯静态模式：手动导入APK，无需任何授权
@@ -46,12 +57,31 @@
 - logs：日志备份
 - temp：临时缓存文件
 
+## 🏗 构建
+
+```bash
+# 需要 JDK 17+ 与 Android SDK (compileSdk 36)
+gradle assembleDebug     # 调试包
+gradle assembleRelease   # 正式包
+```
+
+CI 通过 GitHub Actions 自动构建（见 `.github/workflows/android.yml`）。正式包签名由 Secrets 注入：
+
+| Secret | 说明 |
+| --- | --- |
+| `KEYSTORE_BASE64` | keystore 文件的 base64 |
+| `KEYSTORE_PASSWORD` | keystore 口令 |
+| `KEY_ALIAS` | 签名别名 |
+| `KEY_PASSWORD` | 别名口令 |
+
+未配置 Secrets 时仅产出未签名 release 包，其余流程不受影响。推 `v*` tag 会自动创建 Release 并附带 APK。
+
 ## 🛠 技术栈
-- Kotlin + 少量 Java，Jetpack Compose + Material3
-- DexKit 作为 DEX 解析核心
-- Shizuku 免 Root 提取
+- Kotlin + Jetpack Compose + Material3
+- [DexKit](https://github.com/LuckyPray/DexKit) 作为 DEX 解析核心
+- Shizuku（提取已安装应用）
+- 自研 AXML / resources.arsc 二进制解析（不依赖隐藏 API）
 - 最低适配 Android 10（API 29），目标 SDK 36（Android 16）
-- 开源协议 Apache 2.0
 
 ## 📜 开源协议
 Apache 2.0
