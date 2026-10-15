@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// 签名密钥由 CI/本地环境变量注入；缺失时 release 保持未签名
+val keystorePath: String? = System.getenv("WXDI_KEYSTORE_FILE")
+
 android {
     namespace = "com.johnny.wxdexinspector"
     compileSdk = 36
@@ -25,6 +28,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val p = keystorePath
+            if (!p.isNullOrBlank()) {
+                val kf = file(p)
+                if (kf.exists()) {
+                    storeFile = kf
+                    storePassword = System.getenv("WXDI_KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("WXDI_KEY_ALIAS")
+                    keyPassword = System.getenv("WXDI_KEY_PASSWORD")
+                }
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -36,6 +54,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val relSc = signingConfigs.findByName("release")
+            if (relSc?.storeFile != null) {
+                signingConfig = relSc
+            }
         }
     }
 
