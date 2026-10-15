@@ -324,7 +324,7 @@ fun SettingsScreen(
     if (showLicense) InfoDialog("开源协议", "Apache License 2.0\n\nCopyright (c) 2026 Johnny520\n\nLicensed under the Apache License, Version 2.0. 完整协议文本见仓库根目录 LICENSE 文件。") { showLicense = false }
 
     if (showPermOverview) {
-        PermissionOverviewDialog { showPermOverview = false }
+        PermissionOverviewDialog(onDismiss = { showPermOverview = false })
     }
 
     if (showPathEditor) {
