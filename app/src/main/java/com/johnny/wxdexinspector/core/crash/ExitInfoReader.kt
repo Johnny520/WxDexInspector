@@ -28,8 +28,10 @@ object ExitInfoReader {
         return runCatching {
             val am = context.getSystemService(ActivityManager::class.java)
                 ?: return@runCatching "无法获取 ActivityManager"
-            val list = am.historicalProcessExitInfos
-            if (list.isNullOrEmpty()) return@runCatching "暂无异常退出记录（运行良好）"
+            // 注意：getHistoricalProcessExitInfos() 未在公开 SDK 中导出，需反射调用；
+            // 部分定制 ROM / 低版本系统未提供该接口，此时给出明确提示而不是崩溃。
+            val list = queryExitInfos(am)
+            if (list.isNullOrEmpty()) return@runCatching "未取到进程退出记录（系统未提供该接口，或确实没有异常退出）"
             val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val sb = StringBuilder()
             list.take(limit).forEachIndexed { i, info ->
@@ -44,6 +46,13 @@ object ExitInfoReader {
         }.getOrElse { "读取进程退出记录失败：${it.message}" }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun queryExitInfos(am: ActivityManager): List<ApplicationExitInfo> = runCatching {
+        val method = ActivityManager::class.java.getMethod("getHistoricalProcessExitInfos")
+        val result = method.invoke(am)
+        (result as? List<ApplicationExitInfo>) ?: emptyList()
+    }.getOrElse { emptyList() }
+
     private fun reasonName(reason: Int): String = when (reason) {
         ApplicationExitInfo.REASON_CRASH -> "Java 崩溃（未捕获异常）"
         ApplicationExitInfo.REASON_CRASH_NATIVE -> "Native 崩溃（SIGSEGV/SIGABRT，常见于原生库解析）"
@@ -54,7 +63,6 @@ object ExitInfoReader {
         ApplicationExitInfo.REASON_USER_REQUESTED -> "用户主动结束"
         ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "初始化失败"
         ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "权限变更导致退出"
-        ApplicationExitInfo.REASON_EXCESSIVE_IO -> "IO 过高被系统终止"
         ApplicationExitInfo.REASON_FREEZER -> "被冻结器终止"
         ApplicationExitInfo.REASON_OTHER -> "其他"
         else -> "未知（$reason）"
