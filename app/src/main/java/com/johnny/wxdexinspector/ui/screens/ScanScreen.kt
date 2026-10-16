@@ -73,6 +73,7 @@ fun ScanScreen(
     var exportInfo by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf(0f) }
     var progressText by remember { mutableStateOf("准备中…") }
+    var deepDex by remember { mutableStateOf(true) }
     val progressRef = remember { java.util.concurrent.atomic.AtomicReference(0f to "准备中…") }
 
     // 日志收集协程（避免跨线程改状态）
@@ -100,6 +101,7 @@ fun ScanScreen(
     var started by remember { mutableStateOf(false) }
 
     LaunchedEffect(apkPath) {
+        deepDex = true
         val size = withContext(Dispatchers.IO) {
             runCatching { java.io.File(apkPath).length() }.getOrDefault(0L)
         }
@@ -117,7 +119,7 @@ fun ScanScreen(
         progressRef.set(0f to "准备中…")
         try {
             val r = withContext(Dispatchers.IO) {
-                ScanOrchestrator.scan(context, apkPath, source, scanMode, { line -> logQueue.add(line) }) { p, text ->
+                ScanOrchestrator.scan(context, apkPath, source, scanMode, { line -> logQueue.add(line) }, deepDex) { p, text ->
                     progressRef.set(p.coerceIn(0f, 1f) to text)
                 }
             }
@@ -256,11 +258,21 @@ fun ScanScreen(
             dismissText = "返回",
             onDismiss = { pendingBig = null; onBack() }
         ) {
-            Text(
-                "当前 APK 体积约 ${size / 1024 / 1024} MB，深度解析可能耗时较长（数分钟）并占用较多内存，" +
-                    "建议先关闭其他后台应用。\n\n解析过程中可随时点「取消扫描」中断。",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Column {
+                Text(
+                    "当前 APK 体积约 ${size / 1024 / 1024} MB，DEX 深度解析可能耗时较长并占用较多内存，" +
+                        "存在被系统强制回收（表现为无提示闪退）的风险。\n\n" +
+                        "系统可用内存：${com.johnny.wxdexinspector.core.util.MemInfo.availableText()}\n" +
+                        "解析过程中可随时点「取消扫描」中断。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { pendingBig = null; deepDex = false; started = true },
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("仅基础信息解析（不加载 dexkit，最省内存）") }
+            }
         }
     }
 

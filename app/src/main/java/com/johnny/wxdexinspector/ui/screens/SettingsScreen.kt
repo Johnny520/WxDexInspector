@@ -48,6 +48,7 @@ import androidx.core.content.FileProvider
 import com.johnny.wxdexinspector.BuildConfig
 import com.johnny.wxdexinspector.core.StorageManager
 import com.johnny.wxdexinspector.core.crash.CrashHandler
+import com.johnny.wxdexinspector.core.crash.ExitInfoReader
 import com.johnny.wxdexinspector.core.permission.PermissionManager
 import com.johnny.wxdexinspector.core.update.UpdateChecker
 import com.johnny.wxdexinspector.core.util.openUrl
@@ -330,6 +331,9 @@ fun SettingsScreen(
             ActionRow("查看最近崩溃", Icons.Filled.BugReport) {
                 val t = CrashHandler.lastCrashText()
                 lastCrash = if (t.isNullOrBlank()) "暂无崩溃记录 🎉" else t
+            }
+            ActionRow("进程退出记录（native 崩溃 / 内存回收）", Icons.Filled.Info) {
+                lastCrash = ExitInfoReader.describeRecent(context)
             }
             ActionRow("清空崩溃记录", Icons.Filled.Delete) {
                 val n = CrashHandler.clear()
