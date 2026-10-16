@@ -1,6 +1,8 @@
 package com.johnny.wxdexinspector.core.dex
 
-/** 类信息 */
+/**
+ * 类信息
+ */
 data class DexClassInfo(
     val name: String,
     val descriptor: String,
@@ -61,7 +63,12 @@ data class ScanStats(
     val stringCount: Int = 0
 )
 
-/** DEX 扫描原始输出 */
+/**
+ * DEX 扫描原始输出。
+ *
+ * 该结构同时也是「分段扫描」的中转载体（会话已扫部分），因此字段都是可序列化的普通列表；
+ * [allStrings] 一并保存，保证续扫时字符串统计不丢失。
+ */
 data class DexScanOutput(
     val stats: ScanStats,
     val classes: List<DexClassInfo>,
@@ -70,5 +77,6 @@ data class DexScanOutput(
     val keyStrings: List<StringHit>,
     val hookCandidates: List<HookCandidate>,
     val callEdges: List<CallEdge>,
-    val truncated: Boolean
+    val truncated: Boolean,
+    val allStrings: List<String> = emptyList()
 )

@@ -14,10 +14,15 @@ object SnapshotManager {
     private const val TAG = "Snapshot"
     private val gson: Gson = GsonBuilder().disableHtmlEscaping().create()
 
-    fun save(context: Context, result: ScanResult): File? = try {
-        val dir = StorageManager.snapshotsDir(context)
+    fun save(context: Context, result: ScanResult): File? {
         val name = "${result.apk.packageName.ifBlank { "apk" }}_${result.apk.versionName.ifBlank { "v0" }}_${result.createdAt}.wxsnap"
-        val f = File(dir, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+        return saveNamed(context, name.replace(Regex("[^A-Za-z0-9._-]"), "_"), result)
+    }
+
+    /** 以指定文件名保存（分段会话的进度快照使用） */
+    fun saveNamed(context: Context, fileName: String, result: ScanResult): File? = try {
+        val dir = StorageManager.snapshotsDir(context)
+        val f = File(dir, fileName)
         // 流式写入：避免把整份 JSON 先拼成一个巨型字符串（大 APK 下可达数十 MB）触发 OOM
         java.io.BufferedWriter(
             java.io.OutputStreamWriter(java.io.FileOutputStream(f), Charsets.UTF_8),
@@ -44,7 +49,8 @@ object SnapshotManager {
 
     fun list(context: Context): List<File> {
         val dir = StorageManager.snapshotsDir(context)
-        return dir.listFiles { f -> f.isFile && f.name.endsWith(".wxsnap") }
+        // 分段会话的进度快照（*.session.wxsnap）不作为历史记录展示
+        return dir.listFiles { f -> f.isFile && f.name.endsWith(".wxsnap") && !f.name.endsWith(".session.wxsnap") }
             ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
     }
