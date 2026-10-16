@@ -276,13 +276,19 @@ object ScanOrchestrator {
                 truncated = dexOutput.truncated || !finished
             )
 
-            // 落盘：展示快照 + 会话进度 + 已完成部分（未扫完时）
-            val snap = ScanSessionStore.saveResult(context, newSession.id, result)
-            ScanSessionStore.save(context, newSession)
+            // 落盘：展示快照（历史可见，同一会话覆盖写）+ 会话进度 + 已完成部分（未扫完时）
+            val fileName = newSession.resultFileName.ifBlank {
+                "${meta.packageName.ifBlank { "apk" }}_${meta.versionName.ifBlank { "v0" }}_${newSession.createdAt}.wxsnap"
+                    .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            }
+            val sessionWithName = newSession.copy(resultFileName = fileName)
+            val snap = ScanSessionStore.saveResult(context, sessionWithName, result)
             if (finished) {
-                ScanSessionStore.saveCarry(context, newSession.id, null)
+                // 全部 dex 扫完：清掉会话痕迹，快照留在历史里
+                ScanSessionStore.finishSession(context, sessionWithName.id)
             } else {
-                ScanSessionStore.saveCarry(context, newSession.id, dexOutput)
+                ScanSessionStore.save(context, sessionWithName)
+                ScanSessionStore.saveCarry(context, sessionWithName.id, dexOutput)
             }
 
             val elapsed = (System.currentTimeMillis() - t0) / 1000
@@ -291,7 +297,7 @@ object ScanOrchestrator {
             } else {
                 log(onLog, "本段完成：${newSession.nextDexIndex}/${newSession.totalDex} 个 dex（耗时 ${elapsed} 秒），点「继续扫描」接着来")
             }
-            return ScanRun(result.copy(logFilePath = snap?.absolutePath), newSession)
+            return ScanRun(result.copy(logFilePath = snap?.absolutePath), sessionWithName)
         } finally {
             ScanTrace.end(context)
         }

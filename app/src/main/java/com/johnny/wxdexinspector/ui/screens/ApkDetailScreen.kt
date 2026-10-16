@@ -305,6 +305,7 @@ private fun ComponentsTab(ext: ExtensionResult?) {
 /** 可点击复制单项、并可一键复制全部的组件/权限列表卡片 */
 @Composable
 private fun ComponentListCard(title: String, list: List<String>, context: Context) {
+    var shown by remember { mutableIntStateOf(300) }
     SectionCard(title = "$title (${list.size})") {
         Column(Modifier.padding(14.dp)) {
             if (list.isEmpty()) {
@@ -317,7 +318,7 @@ private fun ComponentListCard(title: String, list: List<String>, context: Contex
                         context.toast("已复制全部 $title")
                     }) { Text("复制全部") }
                 }
-                list.take(300).forEach { item ->
+                list.take(shown).forEach { item ->
                     Row(
                         Modifier.fillMaxWidth()
                             .clickable { context.copyToClipboard(item, title); context.toast("已复制") }
@@ -333,8 +334,12 @@ private fun ComponentListCard(title: String, list: List<String>, context: Contex
                         )
                     }
                 }
-                if (list.size > 300) {
-                    Text("… 仅显示前 300 条，可用「复制全部」获取完整列表", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (list.size > shown) {
+                    TextButton(onClick = { shown += 500 }) {
+                        Text("加载更多（剩余 ${list.size - shown} 条）")
+                    }
+                } else if (list.size > 300) {
+                    Text("已显示全部 ${list.size} 条", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

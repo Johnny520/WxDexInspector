@@ -33,7 +33,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.johnny.wxdexinspector.core.snapshot.SnapshotManager
+import com.johnny.wxdexinspector.core.util.toast
 import com.johnny.wxdexinspector.ui.components.EmptyState
+import com.johnny.wxdexinspector.ui.components.OnResume
 import com.johnny.wxdexinspector.ui.components.SectionCard
 import com.johnny.wxdexinspector.ui.components.SettingRow
 import java.io.File
@@ -50,10 +52,18 @@ fun HistoryScreen(
     val context = LocalContext.current
     var snapshots by remember { mutableStateOf<List<File>>(emptyList()) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var userRefresh by remember { mutableStateOf(false) }
 
     LaunchedEffect(refreshKey) {
         snapshots = SnapshotManager.list(context)
+        if (userRefresh) {
+            userRefresh = false
+            context.toast("已刷新：共 ${snapshots.size} 个快照")
+        }
     }
+
+    // 切回前台时自动刷新（例如在文件管理器里手动放入快照）
+    OnResume { refreshKey++ }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -64,7 +74,7 @@ fun HistoryScreen(
                 Text("历史快照", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("共 ${snapshots.size} 个 .wxsnap 快照", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { refreshKey++ }) { Icon(Icons.Filled.Refresh, contentDescription = "刷新") }
+            IconButton(onClick = { userRefresh = true; refreshKey++ }) { Icon(Icons.Filled.Refresh, contentDescription = "刷新") }
         }
 
         Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {

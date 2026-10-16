@@ -29,6 +29,8 @@ data class ScanSession(
     val dexEntries: List<String> = emptyList(),
     val totalDex: Int = 1,
     val nextDexIndex: Int = 0,
+    /** 展示快照文件名（历史列表可见；同一会话反复覆盖写同一文件，避免历史里堆一堆半成品） */
+    val resultFileName: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -91,9 +93,17 @@ object ScanSessionStore {
         }
     }.onFailure { WxLogger.e(TAG, "读取扫描进度失败：${it.message}") }.getOrNull()
 
-    /** 当前段的展示快照（同一会话覆盖写） */
-    fun saveResult(context: Context, id: String, result: ScanResult): File? =
-        SnapshotManager.saveNamed(context, "$id.session.wxsnap", result)
+    /** 当前段的展示快照（同一会话覆盖写同一文件） */
+    fun saveResult(context: Context, session: ScanSession, result: ScanResult): File? {
+        val name = session.resultFileName.ifBlank { "${session.id}.session.wxsnap" }
+        return SnapshotManager.saveNamed(context, name, result)
+    }
+
+    /** 扫描全部完成：清掉会话痕迹（快照保留在历史中） */
+    fun finishSession(context: Context, id: String) {
+        runCatching { sessionFile(context, id).delete() }
+        runCatching { carryFile(context, id).delete() }
+    }
 
     fun loadResult(context: Context, id: String): ScanResult? = runCatching {
         val f = resultFile(context, id)

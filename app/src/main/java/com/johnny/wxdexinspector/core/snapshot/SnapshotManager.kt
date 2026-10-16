@@ -49,8 +49,7 @@ object SnapshotManager {
 
     fun list(context: Context): List<File> {
         val dir = StorageManager.snapshotsDir(context)
-        // 分段会话的进度快照（*.session.wxsnap）不作为历史记录展示
-        return dir.listFiles { f -> f.isFile && f.name.endsWith(".wxsnap") && !f.name.endsWith(".session.wxsnap") }
+        return dir.listFiles { f -> f.isFile && f.name.endsWith(".wxsnap") }
             ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
     }
