@@ -17,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -67,7 +66,7 @@ fun ScanScreen(
 
     val logQueue = remember { ConcurrentLinkedQueue<String>() }
     var logs by remember { mutableStateOf<List<String>>(emptyList()) }
-    var running by remember { mutableStateOf(true) }
+    var running by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf<ScanResult?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var exportInfo by remember { mutableStateOf<String?>(null) }
@@ -110,6 +109,7 @@ fun ScanScreen(
 
     LaunchedEffect(apkPath, started) {
         if (!started) return@LaunchedEffect
+        var cancelled = false
         running = true
         logs = emptyList()
         result = null
@@ -125,14 +125,19 @@ fun ScanScreen(
             }
             result = r
         } catch (ce: ScanCancelledException) {
+            cancelled = true
             error = "扫描已取消。"
         } catch (t: Throwable) {
             error = (t.message ?: t.toString()) +
                 "\n\n若为闪退/内存问题，可点下方「查看最近崩溃」，或到「设置 → 稳定性」查看记录。"
         }
         running = false
-        progress = 1f
-        progressText = if (error == null) "完成" else "已停止"
+        if (error == null) {
+            progress = 1f
+            progressText = "完成"
+        } else {
+            progressText = if (cancelled) "已取消" else "已停止"
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -142,16 +147,37 @@ fun ScanScreen(
         ) {
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "返回") }
             Column(Modifier.weight(1f)) {
-                Text("扫描中…", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        pendingBig != null -> "等待确认"
+                        running -> "扫描中…"
+                        error != null -> "扫描未完成"
+                        started -> "扫描完成"
+                        else -> "准备中…"
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
                 Text(scanMode.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (running) CircularProgressIndicator(Modifier.padding(8.dp).height(24.dp).padding(4.dp))
+            Text(
+                "${(progress.coerceIn(0f, 1f) * 100).toInt()}%",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (error != null && !running) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 8.dp)
+            )
         }
 
-        if (running) {
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        // 固定位置的进度区（0% → 100%）：不再使用位置会跳动的转圈，且始终占位避免布局抖动
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
             Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 10.dp),
+                Modifier.fillMaxWidth().height(40.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -160,10 +186,12 @@ fun ScanScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
-                OutlinedButton(
-                    onClick = { ScanOrchestrator.cancelCurrent() },
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text("取消扫描") }
+                if (running) {
+                    OutlinedButton(
+                        onClick = { ScanOrchestrator.cancelCurrent() },
+                        shape = RoundedCornerShape(16.dp)
+                    ) { Text("取消扫描") }
+                }
             }
         }
 

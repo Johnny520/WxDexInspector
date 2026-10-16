@@ -120,7 +120,10 @@ object ScanOrchestrator {
             log(onLog, memoryText("解析后"))
 
             var ext: ExtensionResult? = null
-            if (extEnabled) {
+            if (extEnabled && heapRatio() > 0.6f) {
+                // DEX 解析后堆已偏高，再叠加资源/SDK 分析容易触发内存不足
+                log(onLog, "内存占用已达 ${(heapRatio() * 100).toInt()}%，本次跳过拓展功能分析（可在下次内存充裕时重扫）")
+            } else if (extEnabled) {
                 log(onLog, "【拓展功能】开始解析 AndroidManifest / 资源 / SDK…")
                 val entries = BinaryRes.listZipEntries(apkPath)
                 ext = ExtensionAnalyzer.analyze(
@@ -160,6 +163,13 @@ object ScanOrchestrator {
         } finally {
             ScanTrace.end(context)
         }
+    }
+
+    /** 当前堆占用比例（0~1） */
+    private fun heapRatio(): Float {
+        val rt = Runtime.getRuntime()
+        val used = (rt.totalMemory() - rt.freeMemory()).toFloat()
+        return if (rt.maxMemory() <= 0L) 0f else used / rt.maxMemory()
     }
 
     private fun memoryText(where: String): String {

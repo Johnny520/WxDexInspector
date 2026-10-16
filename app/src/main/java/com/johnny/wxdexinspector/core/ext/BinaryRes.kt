@@ -1,5 +1,6 @@
 package com.johnny.wxdexinspector.core.ext
 
+import com.johnny.wxdexinspector.core.log.WxLogger
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipFile
 
@@ -8,6 +9,11 @@ import java.util.zip.ZipFile
  * 纯自研解析，不依赖任何隐藏 API，仅做静态读取。
  */
 object BinaryRes {
+
+    private const val TAG = "BinaryRes"
+
+    /** resources.arsc 一次性读入上限：超过则跳过（超大资源表会占用大量堆） */
+    private const val MAX_ARSC_BYTES = 24L * 1024 * 1024
 
     private fun u8(d: ByteArray, o: Int): Int = d[o].toInt() and 0xFF
     private fun u16(d: ByteArray, o: Int): Int =
@@ -124,6 +130,11 @@ object BinaryRes {
     // ---------------- resources.arsc ----------------
     /** 提取资源表全局字符串池（去重，限长） */
     fun readArscStrings(apkPath: String, limit: Int = 20000): List<String> {
+        val arscSize = zipEntrySize(apkPath, "resources.arsc") ?: return emptyList()
+        if (arscSize > MAX_ARSC_BYTES) {
+            WxLogger.i(TAG, "resources.arsc 体积 ${arscSize / 1024 / 1024} MB 超过 ${MAX_ARSC_BYTES / 1024 / 1024} MB，已跳过解析以避免内存不足")
+            return emptyList()
+        }
         val bytes = readZipEntry(apkPath, "resources.arsc") ?: return emptyList()
         val out = LinkedHashSet<String>()
         try {
@@ -159,6 +170,11 @@ object BinaryRes {
     } catch (t: Throwable) {
         null
     }
+
+    /** zip 条目未压缩大小（不存在返回 null） */
+    private fun zipEntrySize(apkPath: String, entryName: String): Long? = runCatching {
+        ZipFile(apkPath).use { zf -> zf.getEntry(entryName)?.size }
+    }.getOrNull()
 
     fun listZipEntries(apkPath: String, limit: Int = 20000): List<String> = try {
         ZipFile(apkPath).use { zf ->
